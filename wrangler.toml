@@ -4,15 +4,13 @@ compatibility_date = "2026-09-26"
 
 [vars]
 WEBSITE_URL = "https://shopperssuggestions.online"
+
 GITHUB_OWNER = "shop-now-with"
 GITHUB_REPO = "Shopper-s-suggestions"
 GITHUB_BRANCH = "main"
 
 [ai]
 binding = "AI"
-
-[triggers]
-crons = ["0 4 * * *"]
 
 [[d1_databases]]
 binding = "DB"
@@ -23,3 +21,6 @@ database_id = "7fc3ac99-20b3-40f1-a022-1a11a0b4a177"
 directory = "./"
 binding = "ASSETS"
 run_worker_first = ["/api/*"]
+
+[triggers]
+crons = ["0 4 * * *"]
