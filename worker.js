@@ -1,9 +1,21 @@
 export default {
   async fetch(request, env) {
-    return new Response("Shopper AI Manager is online.", {
-      headers: {
-        "content-type": "text/plain"
-      }
-    });
+    try {
+      const result = await env.DB
+        .prepare("SELECT COUNT(*) AS count FROM products")
+        .first();
+
+      return Response.json({
+        ok: true,
+        manager: "online",
+        database: "connected",
+        products: result.count
+      });
+    } catch (error) {
+      return Response.json({
+        ok: false,
+        error: error.message
+      }, { status: 500 });
+    }
   }
 };
