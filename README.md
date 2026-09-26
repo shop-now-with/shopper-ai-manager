@@ -1,0 +1,1 @@
+# shopper-ai-manager
