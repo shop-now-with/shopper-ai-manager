@@ -4,6 +4,15 @@ compatibility_date = "2026-09-26"
 
 [vars]
 WEBSITE_URL = "https://shopperssuggestions.online"
+GITHUB_OWNER = "shop-now-with"
+GITHUB_REPO = "Shopper-s-suggestions"
+GITHUB_BRANCH = "main"
+
+[ai]
+binding = "AI"
+
+[triggers]
+crons = ["0 4 * * *"]
 
 [[d1_databases]]
 binding = "DB"
