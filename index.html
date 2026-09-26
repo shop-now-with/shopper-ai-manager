@@ -1,0 +1,4037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+
+<title>Shopper's Suggestions — AI Manager</title>
+
+<style>
+:root{
+  --white:#ffffff;
+  --bg:#f4f7fb;
+  --blue:#08264f;
+  --blue2:#0d3d78;
+  --blue3:#1769b0;
+  --orange:#ff7417;
+  --orange2:#ff9a3d;
+  --green:#16a66a;
+  --red:#e53955;
+  --text:#0a1d35;
+  --muted:#718096;
+  --line:rgba(8,38,79,.10);
+  --card:rgba(255,255,255,.82);
+  --shadow:0 18px 55px rgba(8,38,79,.11);
+}
+
+*{
+  box-sizing:border-box;
+}
+
+html,body{
+  margin:0;
+  min-height:100%;
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  color:var(--text);
+  background:
+    radial-gradient(circle at 5% 5%,rgba(255,116,23,.12),transparent 28%),
+    radial-gradient(circle at 95% 15%,rgba(23,105,176,.15),transparent 30%),
+    var(--bg);
+}
+
+/* =========================
+   ANIMATED BACKGROUND
+========================= */
+
+.background{
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  overflow:hidden;
+  z-index:-5;
+}
+
+.orb{
+  position:absolute;
+  border-radius:50%;
+  filter:blur(35px);
+  opacity:.28;
+  animation:floatOrb 13s ease-in-out infinite alternate;
+}
+
+.orb.one{
+  width:330px;
+  height:330px;
+  background:var(--orange);
+  top:-150px;
+  left:-100px;
+}
+
+.orb.two{
+  width:420px;
+  height:420px;
+  background:#1971c2;
+  right:-180px;
+  top:15%;
+  animation-delay:-4s;
+}
+
+.orb.three{
+  width:280px;
+  height:280px;
+  background:#ffb56e;
+  bottom:-120px;
+  left:30%;
+  animation-delay:-8s;
+}
+
+@keyframes floatOrb{
+  0%{
+    transform:translate3d(0,0,scale(1));
+  }
+
+  50%{
+    transform:translate3d(70px,35px,0) scale(1.18);
+  }
+
+  100%{
+    transform:translate3d(-30px,80px,0) scale(.95);
+  }
+}
+
+.lines{
+  position:absolute;
+  inset:0;
+  opacity:.35;
+  background-image:
+    linear-gradient(rgba(8,38,79,.035) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(8,38,79,.035) 1px,transparent 1px);
+  background-size:42px 42px;
+  animation:gridMove 18s linear infinite;
+}
+
+@keyframes gridMove{
+  to{
+    background-position:42px 42px;
+  }
+}
+
+/* =========================
+   APP
+========================= */
+
+.app{
+  width:min(1500px,100%);
+  margin:auto;
+  padding:16px;
+}
+
+/* =========================
+   TOP BAR
+========================= */
+
+.topbar{
+  position:sticky;
+  top:10px;
+  z-index:100;
+
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+
+  padding:11px 14px;
+
+  border:1px solid rgba(8,38,79,.12);
+  border-radius:21px;
+
+  background:rgba(255,255,255,.82);
+  backdrop-filter:blur(24px);
+
+  box-shadow:0 15px 45px rgba(8,38,79,.10);
+
+  animation:topIn .5s ease;
+}
+
+@keyframes topIn{
+  from{
+    opacity:0;
+    transform:translateY(-12px);
+  }
+
+  to{
+    opacity:1;
+    transform:none;
+  }
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:11px;
+  min-width:0;
+}
+
+.logo{
+  width:46px;
+  height:46px;
+  padding:3px;
+  object-fit:contain;
+  border-radius:13px;
+  background:white;
+  border:1px solid rgba(8,38,79,.10);
+}
+
+.brand-title{
+  font-size:15px;
+  font-weight:850;
+  color:var(--blue);
+}
+
+.brand-sub{
+  color:#7c8999;
+  font-size:10px;
+  margin-top:2px;
+}
+
+.manager-state{
+  display:flex;
+  align-items:center;
+  gap:8px;
+
+  padding:8px 12px;
+  border-radius:999px;
+
+  background:#f5f8fc;
+  border:1px solid var(--line);
+
+  color:#6e7c8e;
+  font-size:11px;
+}
+
+.status-dot{
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:var(--red);
+}
+
+.status-dot.online{
+  background:var(--green);
+  box-shadow:0 0 13px rgba(22,166,106,.6);
+  animation:statusPulse 1.8s infinite;
+}
+
+@keyframes statusPulse{
+  50%{
+    transform:scale(1.35);
+  }
+}
+
+.actions{
+  display:flex;
+  gap:7px;
+}
+
+.btn{
+  border:1px solid var(--line);
+  background:white;
+  color:var(--blue);
+  padding:10px 13px;
+  border-radius:12px;
+  cursor:pointer;
+  font-weight:700;
+  font-size:11px;
+  transition:.22s;
+}
+
+.btn:hover{
+  transform:translateY(-2px);
+  box-shadow:0 8px 20px rgba(8,38,79,.12);
+}
+
+.btn.primary{
+  color:white;
+  border:0;
+
+  background:
+    linear-gradient(
+      120deg,
+      var(--blue),
+      var(--blue3),
+      var(--orange),
+      var(--blue)
+    );
+
+  background-size:260% 260%;
+
+  animation:gradientMove 5s ease infinite;
+}
+
+@keyframes gradientMove{
+  0%{background-position:0% 50%}
+  50%{background-position:100% 50%}
+  100%{background-position:0% 50%}
+}
+
+/* =========================
+   LAYOUT
+========================= */
+
+.layout{
+  display:grid;
+  grid-template-columns:225px minmax(0,1fr);
+  gap:15px;
+  margin-top:15px;
+}
+
+.sidebar{
+  position:sticky;
+  top:86px;
+
+  height:calc(100vh - 105px);
+  min-height:600px;
+
+  padding:12px;
+
+  border:1px solid var(--line);
+  border-radius:21px;
+
+  background:rgba(255,255,255,.78);
+  backdrop-filter:blur(25px);
+
+  box-shadow:var(--shadow);
+}
+
+.nav-title{
+  color:#8a96a5;
+  font-size:9px;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  padding:12px 9px 7px;
+}
+
+.nav{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.nav button{
+  width:100%;
+  text-align:left;
+
+  padding:11px;
+
+  border:1px solid transparent;
+  border-radius:11px;
+
+  background:transparent;
+  color:#66758a;
+
+  cursor:pointer;
+  font-size:11px;
+  font-weight:650;
+
+  transition:.2s;
+}
+
+.nav button:hover{
+  background:#f2f6fb;
+  color:var(--blue);
+}
+
+.nav button.active{
+  color:white;
+
+  background:
+    linear-gradient(
+      100deg,
+      var(--blue),
+      var(--blue2)
+    );
+
+  box-shadow:
+    0 8px 20px rgba(8,38,79,.18);
+}
+
+.main{
+  min-width:0;
+}
+
+.page{
+  display:none;
+  animation:pageEnter .35s ease;
+}
+
+.page.active{
+  display:block;
+}
+
+@keyframes pageEnter{
+  from{
+    opacity:0;
+    transform:translateY(9px);
+  }
+
+  to{
+    opacity:1;
+    transform:none;
+  }
+}
+
+/* =========================
+   HERO
+========================= */
+
+.hero{
+  position:relative;
+  overflow:hidden;
+
+  padding:28px;
+
+  border:1px solid var(--line);
+  border-radius:25px;
+
+  background:
+    radial-gradient(
+      circle at 90% 10%,
+      rgba(23,105,176,.12),
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at 5% 110%,
+      rgba(255,116,23,.11),
+      transparent 35%
+    ),
+    rgba(255,255,255,.82);
+
+  box-shadow:var(--shadow);
+}
+
+.hero:before{
+  content:"";
+
+  position:absolute;
+
+  width:170px;
+  height:170px;
+
+  right:-80px;
+  top:-90px;
+
+  border:1px solid rgba(23,105,176,.15);
+  border-radius:50%;
+
+  animation:heroRing 10s linear infinite;
+}
+
+.hero:after{
+  content:"";
+
+  position:absolute;
+
+  width:100px;
+  height:100px;
+
+  right:30px;
+  top:-50px;
+
+  border:1px solid rgba(255,116,23,.16);
+  border-radius:50%;
+
+  animation:heroRing 6s linear infinite reverse;
+}
+
+@keyframes heroRing{
+  to{
+    transform:rotate(360deg) scale(1.12);
+  }
+}
+
+.hero h1{
+  position:relative;
+  z-index:2;
+
+  margin:0;
+
+  color:var(--blue);
+
+  font-size:clamp(27px,4vw,45px);
+  letter-spacing:-.045em;
+}
+
+.hero h1 span{
+  color:var(--orange);
+}
+
+.hero p{
+  position:relative;
+  z-index:2;
+
+  max-width:680px;
+
+  color:#708096;
+
+  line-height:1.6;
+  font-size:13px;
+}
+
+.hero-actions{
+  position:relative;
+  z-index:3;
+
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.progress{
+  height:6px;
+
+  margin-top:18px;
+
+  overflow:hidden;
+
+  border-radius:99px;
+
+  background:#e9eef5;
+}
+
+.progress i{
+  display:block;
+
+  width:0;
+  height:100%;
+
+  border-radius:inherit;
+
+  background:
+    linear-gradient(
+      90deg,
+      var(--blue),
+      var(--blue3),
+      var(--orange)
+    );
+
+  transition:width .7s ease;
+}
+
+.progress-text{
+  margin-top:6px;
+
+  color:#8390a1;
+  font-size:9px;
+}
+
+/* =========================
+   STATS
+========================= */
+
+.stats{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:11px;
+
+  margin-top:13px;
+}
+
+.stat{
+  position:relative;
+  overflow:hidden;
+
+  padding:18px;
+
+  border:1px solid var(--line);
+  border-radius:18px;
+
+  background:rgba(255,255,255,.83);
+
+  box-shadow:var(--shadow);
+
+  transition:.25s;
+}
+
+.stat:hover{
+  transform:translateY(-4px);
+}
+
+.stat:after{
+  content:"";
+
+  position:absolute;
+
+  width:70px;
+  height:70px;
+
+  right:-30px;
+  top:-30px;
+
+  border-radius:50%;
+
+  background:var(--orange);
+
+  opacity:.08;
+}
+
+.stat-label{
+  color:#7c899b;
+  font-size:10px;
+}
+
+.stat-value{
+  margin-top:7px;
+
+  color:var(--blue);
+
+  font-size:29px;
+  font-weight:850;
+}
+
+.stat-small{
+  margin-top:4px;
+
+  color:#9aa5b3;
+  font-size:9px;
+}
+
+/* =========================
+   CARDS
+========================= */
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:13px;
+  margin-top:13px;
+}
+
+.card{
+  padding:18px;
+
+  border:1px solid var(--line);
+  border-radius:20px;
+
+  background:rgba(255,255,255,.82);
+
+  box-shadow:var(--shadow);
+
+  animation:cardFloat 6s ease-in-out infinite;
+}
+
+.card:nth-child(2){
+  animation-delay:-3s;
+}
+
+@keyframes cardFloat{
+  50%{
+    transform:translateY(-2px);
+  }
+}
+
+.card-title{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+
+  gap:10px;
+
+  margin-bottom:14px;
+}
+
+.card-title h3{
+  margin:0;
+
+  color:var(--blue);
+
+  font-size:13px;
+}
+
+.card-title span{
+  color:#8b97a6;
+  font-size:9px;
+}
+
+/* =========================
+   AUTOMATION
+========================= */
+
+.automation{
+  display:grid;
+  grid-template-columns:1fr auto;
+  align-items:center;
+  gap:15px;
+}
+
+.automation strong{
+  color:var(--blue);
+  font-size:15px;
+}
+
+.automation p{
+  margin:5px 0 0;
+
+  color:#7b8899;
+  font-size:10px;
+  line-height:1.5;
+}
+
+.toggle{
+  width:53px;
+  height:29px;
+
+  padding:3px;
+
+  border:1px solid #dbe2ea;
+  border-radius:30px;
+
+  background:#edf1f6;
+
+  cursor:pointer;
+}
+
+.toggle i{
+  display:block;
+
+  width:21px;
+  height:21px;
+
+  border-radius:50%;
+
+  background:#9ba7b6;
+
+  transition:.25s;
+}
+
+.toggle.on{
+  background:rgba(22,166,106,.13);
+  border-color:rgba(22,166,106,.35);
+}
+
+.toggle.on i{
+  transform:translateX(23px);
+
+  background:var(--green);
+
+  box-shadow:0 0 15px rgba(22,166,106,.45);
+}
+
+/* =========================
+   TASKS
+========================= */
+
+.task{
+  display:flex;
+  align-items:center;
+
+  gap:10px;
+
+  padding:11px 0;
+
+  border-bottom:1px solid rgba(8,38,79,.06);
+}
+
+.task:last-child{
+  border-bottom:0;
+}
+
+.task-icon{
+  width:32px;
+  height:32px;
+
+  flex:none;
+
+  display:grid;
+  place-items:center;
+
+  border-radius:10px;
+
+  color:var(--blue);
+
+  background:#f0f5fa;
+}
+
+.task-main{
+  min-width:0;
+  flex:1;
+}
+
+.task-main strong{
+  color:#183252;
+  font-size:11px;
+}
+
+.task-main small{
+  display:block;
+
+  margin-top:2px;
+
+  color:#8c98a8;
+  font-size:9px;
+}
+
+.badge{
+  padding:5px 8px;
+
+  border-radius:999px;
+
+  color:#768396;
+  background:#f1f4f8;
+
+  font-size:8px;
+}
+
+.badge.running{
+  color:#1268a7;
+  background:#e5f4ff;
+}
+
+.badge.done{
+  color:#108258;
+  background:#e2f8ee;
+}
+
+/* =========================
+   ACTIVITY
+========================= */
+
+.activity{
+  max-height:360px;
+  overflow:auto;
+}
+
+.activity-row{
+  padding:10px 0;
+
+  border-bottom:1px solid rgba(8,38,79,.06);
+}
+
+.activity-row strong{
+  color:#24405e;
+  font-size:10px;
+}
+
+.activity-row small{
+  display:block;
+
+  margin-top:3px;
+
+  color:#98a2af;
+  font-size:8px;
+}
+
+/* =========================
+   CHAT
+========================= */
+
+.chat-wrap{
+  height:calc(100vh - 125px);
+  min-height:600px;
+
+  display:grid;
+  grid-template-rows:auto 1fr auto;
+
+  overflow:hidden;
+
+  border:1px solid var(--line);
+  border-radius:24px;
+
+  background:rgba(255,255,255,.84);
+
+  box-shadow:var(--shadow);
+}
+
+.chat-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+
+  padding:14px 17px;
+
+  border-bottom:1px solid var(--line);
+}
+
+.ai-status{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+
+.ai-orb{
+  position:relative;
+
+  width:38px;
+  height:38px;
+
+  border-radius:50%;
+
+  background:
+    radial-gradient(circle at 32% 27%,white,transparent 12%),
+    linear-gradient(
+      135deg,
+      var(--blue),
+      var(--blue3),
+      var(--orange)
+    );
+
+  box-shadow:
+    0 0 0 7px rgba(23,105,176,.06),
+    0 0 30px rgba(23,105,176,.22);
+
+  animation:orbPulse 2.5s infinite;
+}
+
+@keyframes orbPulse{
+  50%{
+    transform:scale(1.07) rotate(10deg);
+  }
+}
+
+.chat-title{
+  color:var(--blue);
+  font-size:13px;
+  font-weight:850;
+}
+
+.chat-sub{
+  margin-top:2px;
+
+  color:var(--green);
+
+  font-size:9px;
+}
+
+.messages{
+  padding:20px;
+
+  overflow:auto;
+
+  scroll-behavior:smooth;
+
+  background:
+    radial-gradient(
+      circle at 20% 10%,
+      rgba(23,105,176,.035),
+      transparent 25%
+    ),
+    radial-gradient(
+      circle at 90% 90%,
+      rgba(255,116,23,.04),
+      transparent 30%
+    );
+}
+
+.msg{
+  max-width:82%;
+  margin-bottom:12px;
+
+  animation:messageIn .32s ease;
+}
+
+.msg.user{
+  margin-left:auto;
+}
+
+@keyframes messageIn{
+  from{
+    opacity:0;
+    transform:translateY(10px) scale(.98);
+  }
+
+  to{
+    opacity:1;
+    transform:none;
+  }
+}
+
+.bubble{
+  padding:12px 14px;
+
+  border:1px solid var(--line);
+  border-radius:17px;
+
+  background:white;
+
+  color:#263b54;
+
+  box-shadow:0 8px 25px rgba(8,38,79,.06);
+
+  font-size:13px;
+  line-height:1.6;
+}
+
+.user .bubble{
+  color:white;
+
+  background:
+    linear-gradient(
+      135deg,
+      var(--blue),
+      var(--blue2)
+    );
+
+  border-color:transparent;
+}
+
+.bubble code{
+  padding:2px 5px;
+
+  border-radius:5px;
+
+  color:#f4f7fb;
+  background:#0b1d34;
+
+  font-size:10px;
+}
+
+.code{
+  margin-top:8px;
+
+  padding:12px;
+
+  overflow:auto;
+
+  border-radius:11px;
+
+  color:#dce7f3;
+
+  background:#06162b;
+
+  font:
+    11px/1.55
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+
+  white-space:pre;
+}
+
+.typing{
+  display:none;
+
+  width:max-content;
+
+  padding:10px 13px;
+
+  border:1px solid var(--line);
+  border-radius:15px;
+
+  background:white;
+}
+
+.typing.show{
+  display:block;
+}
+
+.typing i{
+  display:inline-block;
+
+  width:6px;
+  height:6px;
+
+  margin:0 2px;
+
+  border-radius:50%;
+
+  background:var(--blue3);
+
+  animation:typingDot 1s infinite;
+}
+
+.typing i:nth-child(2){
+  animation-delay:.15s;
+}
+
+.typing i:nth-child(3){
+  animation-delay:.3s;
+}
+
+@keyframes typingDot{
+  50%{
+    transform:translateY(-5px);
+    opacity:.35;
+  }
+}
+
+.chat-input{
+  display:flex;
+  gap:8px;
+
+  padding:12px;
+
+  border-top:1px solid var(--line);
+
+  background:rgba(255,255,255,.9);
+}
+
+.chat-input textarea{
+  flex:1;
+
+  min-height:45px;
+  max-height:130px;
+
+  resize:none;
+
+  outline:none;
+
+  padding:12px;
+
+  border:1px solid #dce4ee;
+  border-radius:13px;
+
+  color:var(--text);
+
+  background:#f8fafc;
+
+  font:inherit;
+}
+
+.chat-input textarea:focus{
+  border-color:rgba(23,105,176,.4);
+  box-shadow:0 0 0 3px rgba(23,105,176,.07);
+}
+
+.send{
+  width:48px;
+
+  border:0;
+  border-radius:13px;
+
+  color:white;
+
+  background:
+    linear-gradient(
+      135deg,
+      var(--blue),
+      var(--blue3),
+      var(--orange)
+    );
+
+  cursor:pointer;
+}
+
+/* =========================
+   INPUTS / TABLE
+========================= */
+
+.input-row{
+  display:flex;
+  gap:8px;
+}
+
+.input{
+  flex:1;
+
+  padding:12px;
+
+  border:1px solid #dce4ee;
+  border-radius:12px;
+
+  outline:none;
+
+  background:white;
+  color:var(--text);
+}
+
+.table-wrap{
+  overflow:auto;
+}
+
+table{
+  width:100%;
+  min-width:600px;
+
+  border-collapse:collapse;
+}
+
+th,td{
+  padding:11px;
+
+  text-align:left;
+
+  border-bottom:1px solid rgba(8,38,79,.07);
+
+  font-size:10px;
+}
+
+th{
+  color:#8591a1;
+
+  text-transform:uppercase;
+
+  font-size:8px;
+}
+
+/* =========================
+   MOBILE
+========================= */
+
+@media(max-width:1000px){
+
+  .layout{
+    grid-template-columns:1fr;
+  }
+
+  .sidebar{
+    position:relative;
+    top:auto;
+
+    height:auto;
+    min-height:0;
+  }
+
+  .nav{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+  }
+
+  .stats{
+    grid-template-columns:repeat(2,1fr);
+  }
+}
+
+@media(max-width:650px){
+
+  .app{
+    padding:9px;
+  }
+
+  .topbar{
+    top:5px;
+  }
+
+  .brand-sub{
+    display:none;
+  }
+
+  .manager-state{
+    display:none;
+  }
+
+  .actions .btn:first-child{
+    display:none;
+  }
+
+  .nav{
+    grid-template-columns:repeat(2,1fr);
+  }
+
+  .hero{
+    padding:21px;
+  }
+
+  .grid{
+    grid-template-columns:1fr;
+  }
+
+  .chat-wrap{
+    min-height:530px;
+    height:calc(100vh - 110px);
+  }
+
+  .msg{
+    max-width:93%;
+  }
+}
+</style>
+</head>
+
+
+<body>
+
+<div class="background">
+  <div class="orb one"></div>
+  <div class="orb two"></div>
+  <div class="orb three"></div>
+  <div class="lines"></div>
+</div>
+
+
+<div class="app">
+
+<header class="topbar">
+
+  <div class="brand">
+
+    <img
+      class="logo"
+      src="https://raw.githubusercontent.com/shop-now-with/Shopper-s-suggestions/main/2E7A6582-42BB-48D4-84D8-71C3DA3ED841.jpeg"
+      alt="Shopper's Suggestions">
+
+    <div>
+      <div class="brand-title">
+        Shopper's Suggestions
+      </div>
+
+      <div class="brand-sub">
+        AI Manager Control Center
+      </div>
+    </div>
+
+  </div>
+
+
+  <div class="manager-state">
+
+    <span
+      id="statusDot"
+      class="status-dot">
+    </span>
+
+    <span id="statusText">
+      Checking manager...
+    </span>
+
+  </div>
+
+
+  <div class="actions">
+
+    <button
+      class="btn"
+      onclick="refreshAll()">
+      ↻ Refresh
+    </button>
+
+    <button
+      class="btn primary"
+      onclick="runManager()">
+      ▶ Run Manager
+    </button>
+
+  </div>
+
+</header>
+
+
+<div class="layout">
+
+
+<aside class="sidebar">
+
+  <div class="nav-title">
+    Manager
+  </div>
+
+  <nav class="nav">
+
+    <button
+      class="active"
+      data-page="dashboard">
+      ◉ Dashboard
+    </button>
+
+    <button data-page="chat">
+      ✦ AI Chat
+    </button>
+
+    <button data-page="research">
+      ⌕ Research
+    </button>
+
+    <button data-page="products">
+      ▣ Products
+    </button>
+
+    <button data-page="drafts">
+      ◇ Drafts
+    </button>
+
+    <button data-page="marketing">
+      ↗ Marketing
+    </button>
+
+    <button data-page="automation">
+      ⚙ Automation
+    </button>
+
+    <button data-page="integrations">
+      ⌘ Integrations
+    </button>
+
+    <button data-page="activity">
+      ≡ Activity
+    </button>
+
+  </nav>
+
+
+  <div class="nav-title">
+    System
+  </div>
+
+
+  <div class="card" style="padding:13px">
+
+    <div style="
+      color:#8592a3;
+      font-size:9px;">
+      Manager status
+    </div>
+
+    <div
+      id="sideStatus"
+      style="
+        color:#08264f;
+        font-size:18px;
+        font-weight:850;
+        margin-top:5px;">
+      Checking
+    </div>
+
+    <div
+      id="lastCheck"
+      style="
+        color:#98a4b2;
+        font-size:8px;
+        margin-top:4px;">
+      —
+    </div>
+
+  </div>
+
+</aside>
+
+
+<main class="main">
+
+
+<!-- =========================
+     DASHBOARD
+========================= -->
+
+<section
+  class="page active"
+  id="page-dashboard">
+
+  <div class="hero">
+
+    <h1>
+      Your
+      <span>AI Manager</span>
+    </h1>
+
+    <p>
+      Discover products, research opportunities, prepare listings,
+      manage drafts, create marketing content and monitor the
+      Shopper's Suggestions pipeline.
+    </p>
+
+
+    <div class="hero-actions">
+
+      <button
+        class="btn primary"
+        onclick="runManager()">
+        ▶ Start Manager
+      </button>
+
+      <button
+        class="btn"
+        onclick="switchPage('chat')">
+        ✦ Talk to Manager
+      </button>
+
+      <button
+        class="btn"
+        onclick="refreshAll()">
+        ↻ Sync
+      </button>
+
+    </div>
+
+
+    <div class="progress">
+      <i id="managerProgress"></i>
+    </div>
+
+    <div
+      class="progress-text"
+      id="managerMessage">
+      Manager waiting.
+    </div>
+
+  </div>
+
+
+  <div class="stats">
+
+    <div class="stat">
+
+      <div class="stat-label">
+        Products
+      </div>
+
+      <div
+        class="stat-value"
+        id="statProducts">
+        —
+      </div>
+
+      <div class="stat-small">
+        Published products
+      </div>
+
+    </div>
+
+
+    <div class="stat">
+
+      <div class="stat-label">
+        Uploads
+      </div>
+
+      <div
+        class="stat-value"
+        id="statUploads">
+        —
+      </div>
+
+      <div class="stat-small">
+        Media files
+      </div>
+
+    </div>
+
+
+    <div class="stat">
+
+      <div class="stat-label">
+        Drafts
+      </div>
+
+      <div
+        class="stat-value"
+        id="statDrafts">
+        —
+      </div>
+
+      <div class="stat-small">
+        Waiting approval
+      </div>
+
+    </div>
+
+
+    <div class="stat">
+
+      <div class="stat-label">
+        Tasks
+      </div>
+
+      <div
+        class="stat-value"
+        id="statTasks">
+        —
+      </div>
+
+      <div class="stat-small">
+        Manager tasks
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <div class="grid">
+
+
+    <div class="card">
+
+      <div class="card-title">
+
+        <h3>
+          Automatic Manager
+        </h3>
+
+        <span id="autoLabel">
+          OFF
+        </span>
+
+      </div>
+
+
+      <div class="automation">
+
+        <div>
+
+          <strong>
+            Daily pipeline
+          </strong>
+
+          <p>
+            Allow the Worker scheduler to start
+            the manager automatically.
+          </p>
+
+        </div>
+
+
+        <button
+          class="toggle"
+          id="autoToggle"
+          onclick="toggleAutomation()">
+
+          <i></i>
+
+        </button>
+
+      </div>
+
+
+      <div class="progress">
+        <i id="pipelineProgress"></i>
+      </div>
+
+      <div
+        id="pipelineText"
+        class="progress-text">
+        Waiting for manager.
+      </div>
+
+    </div>
+
+
+    <div class="card">
+
+      <div class="card-title">
+
+        <h3>
+          Live Activity
+        </h3>
+
+        <span>
+          Latest
+        </span>
+
+      </div>
+
+
+      <div
+        class="activity"
+        id="activityMini">
+        Loading activity...
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <div class="grid">
+
+
+    <div class="card">
+
+      <div class="card-title">
+
+        <h3>
+          Manager Tasks
+        </h3>
+
+        <span id="pipelineCount">
+          0 tasks
+        </span>
+
+      </div>
+
+
+      <div id="taskList">
+        Loading tasks...
+      </div>
+
+    </div>
+
+
+    <div class="card">
+
+      <div class="card-title">
+
+        <h3>
+          System Health
+        </h3>
+
+        <span>
+          Live
+        </span>
+
+      </div>
+
+
+      <div id="healthBox">
+        Checking services...
+      </div>
+
+    </div>
+
+  </div>
+
+</section>
+
+
+<!-- =========================
+     CHAT
+========================= -->
+
+<section
+  class="page"
+  id="page-chat">
+
+  <div class="chat-wrap">
+
+
+    <div class="chat-head">
+
+      <div class="ai-status">
+
+        <div class="ai-orb"></div>
+
+        <div>
+
+          <div class="chat-title">
+            AI Manager
+          </div>
+
+          <div
+            class="chat-sub"
+            id="chatStatus">
+            Checking...
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <button
+        class="btn"
+        onclick="clearChat()">
+        New chat
+      </button>
+
+    </div>
+
+
+    <div
+      class="messages"
+      id="messages">
+
+      <div class="msg">
+
+        <div class="bubble">
+
+          <strong>
+            Hellow 👋
+          </strong>
+
+          <br><br>
+
+          I'm your Shopper's Suggestions AI Manager.
+
+          Ask me about products, research,
+          listings, marketing, automation,
+          or anything about the manager.
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="msg"
+        id="typingMsg">
+
+        <div
+          class="typing"
+          id="typing">
+
+          <i></i>
+          <i></i>
+          <i></i>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <div class="chat-input">
+
+      <textarea
+        id="chatInput"
+        rows="1"
+        placeholder="Talk to your AI Manager...">
+      </textarea>
+
+      <button
+        class="send"
+        onclick="sendChat()">
+        ➤
+      </button>
+
+    </div>
+
+  </div>
+
+</section>
+
+
+<!-- =========================
+     RESEARCH
+========================= -->
+
+<section
+  class="page"
+  id="page-research">
+
+  <div class="hero">
+
+    <h1>
+      Product
+      <span>Research</span>
+    </h1>
+
+    <p>
+      Ask the AI Manager to research products,
+      niches and trends.
+    </p>
+
+
+    <div class="input-row">
+
+      <input
+        class="input"
+        id="researchInput"
+        placeholder="Example: trending phone accessories">
+
+      <button
+        class="btn primary"
+        onclick="research()">
+        Research
+      </button>
+
+    </div>
+
+  </div>
+
+
+  <div
+    class="card"
+    style="margin-top:13px">
+
+    <div class="card-title">
+
+      <h3>
+        Research Result
+      </h3>
+
+      <span id="researchStatus">
+        Waiting
+      </span>
+
+    </div>
+
+
+    <pre
+      id="researchResult"
+      style="
+        white-space:pre-wrap;
+        color:#66788e;
+        font-size:11px;
+        line-height:1.6;">
+No research started yet.
+    </pre>
+
+  </div>
+
+</section>
+
+
+<!-- =========================
+     PRODUCTS
+========================= -->
+
+<section
+  class="page"
+  id="page-products">
+
+  <div class="hero">
+
+    <h1>
+      Product
+      <span>Database</span>
+    </h1>
+
+    <p>
+      Products currently stored in Shopper's Suggestions.
+    </p>
+
+  </div>
+
+
+  <div
+    class="card"
+    style="margin-top:13px">
+
+    <div class="card-title">
+
+      <h3>
+        Products
+      </h3>
+
+      <span id="productCount">
+        Loading...
+      </span>
+
+    </div>
+
+
+    <div class="table-wrap">
+
+      <table>
+
+        <thead>
+
+          <tr>
+
+            <th>
+              ID
+            </th>
+
+            <th>
+              Product
+            </th>
+
+            <th>
+              Category
+            </th>
+
+            <th>
+              Featured
+            </th>
+
+            <th>
+              Created
+            </th>
+
+          </tr>
+
+        </thead>
+
+
+        <tbody id="productTable">
+
+          <tr>
+            <td colspan="5">
+              Loading...
+            </td>
+          </tr>
+
+        </tbody>
+
+      </table>
+
+    </div>
+
+  </div>
+
+</section>
+
+
+<!-- =========================
+     DRAFTS
+========================= -->
+
+<section
+  class="page"
+  id="page-drafts">
+
+  <div class="hero">
+
+    <h1>
+      Product
+      <span>Drafts</span>
+    </h1>
+
+    <p>
+      AI-created listings waiting for approval.
+    </p>
+
+  </div>
+
+
+  <div
+    class="card"
+    style="margin-top:13px">
+
+    <div id="draftList">
+      Loading drafts...
+    </div>
+
+  </div>
+
+</section>
+
+
+<!-- =========================
+     MARKETING
+========================= -->
+
+<section
+  class="page"
+  id="page-marketing">
+
+  <div class="hero">
+
+    <h1>
+      AI
+      <span>Marketing</span>
+    </h1>
+
+    <p>
+      Generate promotional ideas and content.
+    </p>
+
+
+    <button
+      class="btn primary"
+      onclick="generateMarketing()">
+      ✦ Generate Marketing
+    </button>
+
+  </div>
+
+
+  <div
+    class="card"
+    style="margin-top:13px">
+
+    <div class="card-title">
+
+      <h3>
+        Marketing Output
+      </h3>
+
+      <span id="marketingStatus">
+        Waiting
+      </span>
+
+    </div>
+
+
+    <pre
+      id="marketingResult"
+      style="
+        white-space:pre-wrap;
+        color:#66788e;
+        font-size:11px;
+        line-height:1.6;">
+No marketing output yet.
+    </pre>
+
+  </div>
+
+</section>
+
+
+<!-- =========================
+     AUTOMATION
+========================= -->
+
+<section
+  class="page"
+  id="page-automation">
+
+  <div class="hero">
+
+    <h1>
+      Manager
+      <span>Automation</span>
+    </h1>
+
+    <p>
+      Control the automatic manager pipeline.
+    </p>
+
+  </div>
+
+
+  <div class="grid">
+
+
+    <div class="card">
+
+      <div class="card-title">
+
+        <h3>
+          Automatic Manager
+        </h3>
+
+        <span id="automationPageState">
+          OFF
+        </span>
+
+      </div>
+
+
+      <div class="automation">
+
+        <div>
+
+          <strong>
+            Daily discovery
+          </strong>
+
+          <p>
+            Cloudflare cron can trigger the
+            manager automatically.
+          </p>
+
+        </div>
+
+
+        <button
+          class="toggle"
+          id="autoToggle2"
+          onclick="toggleAutomation()">
+
+          <i></i>
+
+        </button>
+
+      </div>
+
+    </div>
+
+
+    <div class="card">
+
+      <div class="card-title">
+
+        <h3>
+          Pipeline
+        </h3>
+
+        <span>
+          Stages
+        </span>
+
+      </div>
+
+
+      <div class="task">
+
+        <div class="task-icon">
+          ⌕
+        </div>
+
+        <div class="task-main">
+
+          <strong>
+            Trend discovery
+          </strong>
+
+          <small>
+            Find potential products
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div class="task">
+
+        <div class="task-icon">
+          ◎
+        </div>
+
+        <div class="task-main">
+
+          <strong>
+            Product research
+          </strong>
+
+          <small>
+            Research opportunity
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div class="task">
+
+        <div class="task-icon">
+          ✎
+        </div>
+
+        <div class="task-main">
+
+          <strong>
+            Listing creator
+          </strong>
+
+          <small>
+            Generate product listing
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div class="task">
+
+        <div class="task-icon">
+          ◇
+        </div>
+
+        <div class="task-main">
+
+          <strong>
+            Quality checker
+          </strong>
+
+          <small>
+            Validate before publishing
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div class="task">
+
+        <div class="task-icon">
+          ↗
+        </div>
+
+        <div class="task-main">
+
+          <strong>
+            Marketing agent
+          </strong>
+
+          <small>
+            Prepare promotional content
+          </small>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</section>
+
+
+<!-- =========================
+     INTEGRATIONS
+========================= -->
+
+<section
+  class="page"
+  id="page-integrations">
+
+  <div class="hero">
+
+    <h1>
+      System
+      <span>Integrations</span>
+    </h1>
+
+    <p>
+      Services connected to the AI Manager.
+    </p>
+
+  </div>
+
+
+  <div class="grid">
+
+    <div class="card">
+
+      <div class="card-title">
+
+        <h3>
+          Website
+        </h3>
+
+        <span id="intWebsite">
+          Checking
+        </span>
+
+      </div>
+
+      <p style="
+        color:#7d8999;
+        font-size:10px;">
+        Shopper's Suggestions.
+      </p>
+
+    </div>
+
+
+    <div class="card">
+
+      <div class="card-title">
+
+        <h3>
+          GitHub Media
+        </h3>
+
+        <span id="intGithub">
+          Checking
+        </span>
+
+      </div>
+
+      <p style="
+        color:#7d8999;
+        font-size:10px;">
+        Product media repository.
+      </p>
+
+    </div>
+
+
+    <div class="card">
+
+      <div class="card-title">
+
+        <h3>
+          Instagram
+        </h3>
+
+        <span id="intInstagram">
+          Checking
+        </span>
+
+      </div>
+
+      <p style="
+        color:#7d8999;
+        font-size:10px;">
+        Marketing connection.
+      </p>
+
+    </div>
+
+
+    <div class="card">
+
+      <div class="card-title">
+
+        <h3>
+          Affiliate
+        </h3>
+
+        <span id="intAffiliate">
+          Checking
+        </span>
+
+      </div>
+
+      <p style="
+        color:#7d8999;
+        font-size:10px;">
+        Affiliate product links.
+      </p>
+
+    </div>
+
+  </div>
+
+</section>
+
+
+<!-- =========================
+     ACTIVITY
+========================= -->
+
+<section
+  class="page"
+  id="page-activity">
+
+  <div class="hero">
+
+    <h1>
+      Manager
+      <span>Activity</span>
+    </h1>
+
+    <p>
+      Recent manager events and operations.
+    </p>
+
+  </div>
+
+
+  <div
+    class="card"
+    style="margin-top:13px">
+
+    <div
+      class="activity"
+      id="activityFull">
+      Loading activity...
+    </div>
+
+  </div>
+
+</section>
+
+
+</main>
+</div>
+</div>
+
+
+<script>
+
+/* =====================================================
+   STATE
+===================================================== */
+
+let automationEnabled=false;
+
+
+/* =====================================================
+   NAVIGATION
+===================================================== */
+
+document.querySelectorAll(".nav button").forEach(button=>{
+
+  button.addEventListener("click",()=>{
+
+    switchPage(button.dataset.page);
+
+  });
+
+});
+
+
+function switchPage(name){
+
+  document.querySelectorAll(".page").forEach(page=>{
+    page.classList.remove("active");
+  });
+
+  document.querySelectorAll(".nav button").forEach(button=>{
+    button.classList.remove("active");
+  });
+
+  const page=document.getElementById("page-"+name);
+
+  if(page){
+    page.classList.add("active");
+  }
+
+  const nav=document.querySelector(
+    `.nav button[data-page="${name}"]`
+  );
+
+  if(nav){
+    nav.classList.add("active");
+  }
+
+
+  if(name==="products"){
+    loadProducts();
+  }
+
+  if(name==="drafts"){
+    loadDrafts();
+  }
+
+  if(name==="activity"){
+    loadActivity();
+  }
+
+}
+
+
+/* =====================================================
+   API HELPER
+===================================================== */
+
+async function api(url,options={}){
+
+  const response=await fetch(url,{
+
+    ...options,
+
+    headers:{
+      ...(options.body
+        ? {"Content-Type":"application/json"}
+        : {}),
+      ...(options.headers || {})
+    }
+
+  });
+
+
+  const raw=await response.text();
+
+  let data={};
+
+  try{
+    data=raw ? JSON.parse(raw) : {};
+  }catch{
+    data={
+      raw
+    };
+  }
+
+
+  if(!response.ok){
+
+    throw new Error(
+
+      data.error ||
+      data.message ||
+      data.raw ||
+      `HTTP ${response.status}`
+
+    );
+
+  }
+
+
+  return data;
+
+}
+
+
+/* =====================================================
+   HEALTH
+===================================================== */
+
+async function loadHealth(){
+
+  try{
+
+    const data=await api("/api/health");
+
+
+    const online=
+      data.ok === true ||
+      data.status === "ok";
+
+
+    document
+      .getElementById("statusDot")
+      .classList.toggle("online",online);
+
+
+    document.getElementById("statusText").textContent=
+      online
+        ? "Manager online"
+        : "Manager offline";
+
+
+    document.getElementById("sideStatus").textContent=
+      online
+        ? "ONLINE"
+        : "OFFLINE";
+
+
+    document.getElementById("chatStatus").textContent=
+      online
+        ? "Online"
+        : "Offline";
+
+
+    document.getElementById("lastCheck").textContent=
+      "Last check: "+
+      new Date().toLocaleTimeString();
+
+
+    document.getElementById("healthBox").innerHTML=`
+
+      ${healthRow(
+        "AI Engine",
+        data.ai
+      )}
+
+      ${healthRow(
+        "D1 Database",
+        data.database
+      )}
+
+      ${healthRow(
+        "Assets",
+        data.assets
+      )}
+
+      <div style="
+        color:#8c99a8;
+        font-size:8px;
+        margin-top:10px;">
+        Model:
+        ${escapeHtml(data.model || "Unknown")}
+      </div>
+
+    `;
+
+  }catch(error){
+
+    document
+      .getElementById("statusDot")
+      .classList.remove("online");
+
+
+    document.getElementById("statusText").textContent=
+      "Manager offline";
+
+
+    document.getElementById("sideStatus").textContent=
+      "OFFLINE";
+
+
+    document.getElementById("chatStatus").textContent=
+      "Offline";
+
+
+    document.getElementById("healthBox").innerHTML=`
+
+      <div style="
+        color:#e53955;
+        font-size:10px;">
+
+        ${escapeHtml(error.message)}
+
+      </div>
+
+    `;
+
+  }
+
+}
+
+
+function healthRow(name,value){
+
+  return `
+
+    <div class="task">
+
+      <div class="task-icon">
+        ●
+      </div>
+
+      <div class="task-main">
+
+        <strong>
+          ${name}
+        </strong>
+
+        <small>
+          ${value ? "Connected" : "Unavailable"}
+        </small>
+
+      </div>
+
+      <span class="badge ${value ? "done" : ""}">
+        ${value ? "ONLINE" : "OFFLINE"}
+      </span>
+
+    </div>
+
+  `;
+
+}
+
+
+/* =====================================================
+   DASHBOARD
+===================================================== */
+
+async function loadDashboard(){
+
+  try{
+
+    const data=await api("/api/dashboard");
+
+
+    const products=
+      data.products ??
+      data.product_count ??
+      data.count ??
+      0;
+
+
+    const drafts=
+      data.drafts ??
+      data.draft_count ??
+      0;
+
+
+    const tasks=
+      data.tasks ??
+      data.task_count ??
+      0;
+
+
+    document.getElementById("statProducts").textContent=
+      products;
+
+
+    document.getElementById("statDrafts").textContent=
+      drafts;
+
+
+    document.getElementById("statTasks").textContent=
+      tasks;
+
+
+    document.getElementById("statUploads").textContent=
+      data.uploads ??
+      data.media ??
+      data.media_count ??
+      "—";
+
+
+  }catch{
+
+    await loadProductFallback();
+
+  }
+
+}
+
+
+async function loadProductFallback(){
+
+  try{
+
+    const products=await getProducts();
+
+
+    document.getElementById("statProducts").textContent=
+      products.length;
+
+
+    let uploads=0;
+
+
+    for(const product of products){
+
+      for(let i=1;i<=5;i++){
+
+        if(product["image"+i+"_url"]){
+          uploads++;
+        }
+
+      }
+
+      if(product.video_url){
+        uploads++;
+      }
+
+    }
+
+
+    document.getElementById("statUploads").textContent=
+      uploads;
+
+  }catch{
+
+    document.getElementById("statProducts").textContent=
+      "—";
+
+    document.getElementById("statUploads").textContent=
+      "—";
+
+  }
+
+}
+
+
+/* =====================================================
+   PRODUCTS
+===================================================== */
+
+async function getProducts(){
+
+  const data=await api("/api/products");
+
+  return Array.isArray(data)
+    ? data
+    : data.products || [];
+
+}
+
+
+async function loadProducts(){
+
+  const table=document.getElementById("productTable");
+
+
+  try{
+
+    const products=await getProducts();
+
+
+    document.getElementById("productCount").textContent=
+      products.length+" products";
+
+
+    table.innerHTML="";
+
+
+    if(!products.length){
+
+      table.innerHTML=`
+
+        <tr>
+          <td colspan="5">
+            No products yet.
+          </td>
+        </tr>
+
+      `;
+
+      return;
+
+    }
+
+
+    products.forEach(product=>{
+
+      const row=document.createElement("tr");
+
+
+      row.innerHTML=`
+
+        <td>
+          ${escapeHtml(product.id)}
+        </td>
+
+        <td>
+          ${escapeHtml(
+            product.title || "Untitled"
+          )}
+        </td>
+
+        <td>
+          ${escapeHtml(
+            product.category || "Other"
+          )}
+        </td>
+
+        <td>
+          ${product.featured ? "YES" : "NO"}
+        </td>
+
+        <td>
+          ${escapeHtml(
+            product.created_at || "—"
+          )}
+        </td>
+
+      `;
+
+
+      table.appendChild(row);
+
+    });
+
+
+  }catch(error){
+
+    table.innerHTML=`
+
+      <tr>
+        <td colspan="5">
+          ${escapeHtml(error.message)}
+        </td>
+      </tr>
+
+    `;
+
+  }
+
+}
+
+
+/* =====================================================
+   TASKS
+===================================================== */
+
+async function loadTasks(){
+
+  try{
+
+    const data=await api("/api/tasks");
+
+
+    const tasks=
+      Array.isArray(data)
+        ? data
+        : data.tasks || [];
+
+
+    document.getElementById("pipelineCount").textContent=
+      tasks.length+" tasks";
+
+
+    document.getElementById("statTasks").textContent=
+      tasks.length;
+
+
+    document.getElementById("taskList").innerHTML=
+      tasks.length
+
+        ? tasks
+          .slice(0,12)
+          .map(task=>`
+
+            <div class="task">
+
+              <div class="task-icon">
+                ⚙
+              </div>
+
+              <div class="task-main">
+
+                <strong>
+                  ${escapeHtml(
+                    task.title ||
+                    task.name ||
+                    task.type ||
+                    "Manager task"
+                  )}
+                </strong>
+
+                <small>
+                  ${escapeHtml(
+                    task.created_at ||
+                    task.updated_at ||
+                    ""
+                  )}
+                </small>
+
+              </div>
+
+              <span class="badge ${
+                task.status==="done"
+                  ? "done"
+                  : task.status==="running"
+                    ? "running"
+                    : ""
+              }">
+
+                ${escapeHtml(
+                  task.status || "queued"
+                )}
+
+              </span>
+
+            </div>
+
+          `)
+          .join("")
+
+        : `
+
+          <div style="
+            color:#8d99a8;
+            font-size:10px;">
+            No manager tasks yet.
+          </div>
+
+        `;
+
+
+  }catch{
+
+    document.getElementById("taskList").innerHTML=`
+
+      <div style="
+        color:#8d99a8;
+        font-size:10px;">
+
+        Task system waiting.
+
+      </div>
+
+    `;
+
+  }
+
+}
+
+
+/* =====================================================
+   ACTIVITY
+===================================================== */
+
+async function loadActivity(){
+
+  try{
+
+    const data=await api("/api/logs");
+
+
+    const logs=
+      Array.isArray(data)
+        ? data
+        : data.logs ||
+          data.activity ||
+          [];
+
+
+    renderActivity(logs);
+
+
+  }catch{
+
+    renderActivity([]);
+
+  }
+
+}
+
+
+function renderActivity(logs){
+
+  const html=
+
+    logs.length
+
+      ? logs
+        .slice(0,30)
+        .map(log=>`
+
+          <div class="activity-row">
+
+            <strong>
+              ${escapeHtml(
+                log.message ||
+                log.action ||
+                log.event ||
+                "Manager activity"
+              )}
+            </strong>
+
+            <small>
+              ${escapeHtml(
+                log.created_at ||
+                log.timestamp ||
+                ""
+              )}
+            </small>
+
+          </div>
+
+        `)
+        .join("")
+
+      : `
+
+        <div style="
+          color:#8d99a8;
+          font-size:10px;">
+
+          No activity recorded yet.
+
+        </div>
+
+      `;
+
+
+  document.getElementById("activityFull").innerHTML=
+    html;
+
+
+  document.getElementById("activityMini").innerHTML=
+    html;
+
+}
+
+
+/* =====================================================
+   DRAFTS
+===================================================== */
+
+async function loadDrafts(){
+
+  try{
+
+    const data=await api("/api/drafts");
+
+
+    const drafts=
+      Array.isArray(data)
+        ? data
+        : data.drafts || [];
+
+
+    document.getElementById("draftList").innerHTML=
+
+      drafts.length
+
+        ? drafts.map(d=>`
+
+          <div class="task">
+
+            <div class="task-icon">
+              ◇
+            </div>
+
+            <div class="task-main">
+
+              <strong>
+                ${escapeHtml(
+                  d.title ||
+                  d.name ||
+                  "Untitled draft"
+                )}
+              </strong>
+
+              <small>
+                ${escapeHtml(
+                  d.category ||
+                  d.created_at ||
+                  ""
+                )}
+              </small>
+
+            </div>
+
+            <span class="badge">
+              ${escapeHtml(
+                d.status || "draft"
+              )}
+            </span>
+
+          </div>
+
+        `).join("")
+
+        : `
+
+          <div style="
+            color:#8d99a8;
+            font-size:10px;">
+
+            No drafts waiting.
+
+          </div>
+
+        `;
+
+  }catch(error){
+
+    document.getElementById("draftList").innerHTML=`
+
+      <div style="
+        color:#e53955;
+        font-size:10px;">
+
+        ${escapeHtml(error.message)}
+
+      </div>
+
+    `;
+
+  }
+
+}
+
+
+/* =====================================================
+   RUN MANAGER
+===================================================== */
+
+async function runManager(){
+
+  const progress=
+    document.getElementById("managerProgress");
+
+  const message=
+    document.getElementById("managerMessage");
+
+
+  progress.style.width="5%";
+
+  message.textContent=
+    "Starting manager...";
+
+
+  try{
+
+    let result;
+
+
+    /*
+      First try the dedicated manager endpoint.
+    */
+
+    try{
+
+      result=await api(
+        "/api/manager/run",
+        {
+          method:"POST",
+          body:JSON.stringify({})
+        }
+      );
+
+    }catch{
+
+      /*
+        Second possible endpoint.
+      */
+
+      try{
+
+        result=await api(
+          "/api/run-manager",
+          {
+            method:"POST",
+            body:JSON.stringify({})
+          }
+        );
+
+      }catch{
+
+        /*
+          Last fallback.
+        */
+
+        result=await api(
+          "/api/tasks",
+          {
+            method:"POST",
+            body:JSON.stringify({
+              type:"manager_run"
+            })
+          }
+        );
+
+      }
+
+    }
+
+
+    progress.style.width="100%";
+
+
+    message.textContent=
+      result.message ||
+      result.status ||
+      result.result ||
+      "Manager started.";
+
+
+    await refreshAll();
+
+
+    setTimeout(()=>{
+      progress.style.width="0%";
+    },1800);
+
+
+  }catch(error){
+
+    progress.style.width="0%";
+
+
+    message.textContent=
+      "Manager endpoint: "+
+      error.message;
+
+  }
+
+}
+
+
+/* =====================================================
+   AUTOMATION
+===================================================== */
+
+function toggleAutomation(){
+
+  automationEnabled=
+    !automationEnabled;
+
+
+  document
+    .querySelectorAll(".toggle")
+    .forEach(toggle=>{
+
+      toggle.classList.toggle(
+        "on",
+        automationEnabled
+      );
+
+    });
+
+
+  document.getElementById("autoLabel").textContent=
+    automationEnabled
+      ? "ON"
+      : "OFF";
+
+
+  document.getElementById(
+    "automationPageState"
+  ).textContent=
+    automationEnabled
+      ? "ON"
+      : "OFF";
+
+
+  document.getElementById(
+    "pipelineText"
+  ).textContent=
+
+    automationEnabled
+
+      ? "Automatic manager mode enabled."
+
+      : "Automatic manager mode disabled.";
+
+}
+
+
+/* =====================================================
+   RESEARCH
+===================================================== */
+
+async function research(){
+
+  const input=
+    document.getElementById("researchInput");
+
+  const result=
+    document.getElementById("researchResult");
+
+  const status=
+    document.getElementById("researchStatus");
+
+
+  const query=
+    input.value.trim();
+
+
+  if(!query){
+
+    result.textContent=
+      "Enter something to research.";
+
+    return;
+
+  }
+
+
+  status.textContent=
+    "Researching...";
+
+
+  result.textContent=
+    "AI Manager is researching...";
+
+
+  try{
+
+    const data=await api(
+      "/api/research",
+      {
+        method:"POST",
+        body:JSON.stringify({
+          query
+        })
+      }
+    );
+
+
+    status.textContent=
+      "Complete";
+
+
+    result.textContent=
+      extractAIResponse(data);
+
+
+  }catch(error){
+
+    status.textContent=
+      "Error";
+
+
+    result.textContent=
+      error.message;
+
+  }
+
+}
+
+
+/* =====================================================
+   MARKETING
+===================================================== */
+
+async function generateMarketing(){
+
+  const result=
+    document.getElementById("marketingResult");
+
+  const status=
+    document.getElementById("marketingStatus");
+
+
+  status.textContent=
+    "Generating...";
+
+
+  result.textContent=
+    "AI Manager is creating marketing content...";
+
+
+  try{
+
+    const data=await api(
+      "/api/marketing",
+      {
+        method:"POST",
+        body:JSON.stringify({
+          mode:"daily_product_marketing"
+        })
+      }
+    );
+
+
+    status.textContent=
+      "Complete";
+
+
+    result.textContent=
+      extractAIResponse(data);
+
+
+  }catch(error){
+
+    status.textContent=
+      "Error";
+
+    result.textContent=
+      error.message;
+
+  }
+
+}
+
+
+/* =====================================================
+   INTEGRATIONS
+===================================================== */
+
+async function loadIntegrations(){
+
+  const integrations=[
+
+    [
+      "intWebsite",
+      "/api/integrations"
+    ],
+
+    [
+      "intGithub",
+      "/api/integrations/github/test"
+    ],
+
+    [
+      "intInstagram",
+      "/api/integrations/instagram/test"
+    ],
+
+    [
+      "intAffiliate",
+      "/api/integrations/affiliate/test"
+    ]
+
+  ];
+
+
+  for(const [id,url] of integrations){
+
+    try{
+
+      const data=
+        await api(url);
+
+
+      document.getElementById(id).textContent=
+        data.ok ||
+        data.connected
+          ? "CONNECTED"
+          : "AVAILABLE";
+
+
+    }catch{
+
+      document.getElementById(id).textContent=
+        "NOT CONNECTED";
+
+    }
+
+  }
+
+}
+
+
+/* =====================================================
+   AI CHAT
+===================================================== */
+
+const chatInput=
+  document.getElementById("chatInput");
+
+
+chatInput.addEventListener(
+  "keydown",
+  event=>{
+
+    if(
+      event.key==="Enter" &&
+      !event.shiftKey
+    ){
+
+      event.preventDefault();
+
+      sendChat();
+
+    }
+
+  }
+);
+
+
+async function sendChat(){
+
+  const text=
+    chatInput.value.trim();
+
+
+  if(!text){
+    return;
+  }
+
+
+  addMessage(
+    text,
+    "user"
+  );
+
+
+  chatInput.value="";
+
+
+  const typing=
+    document.getElementById("typing");
+
+
+  typing.classList.add("show");
+
+
+  scrollChat();
+
+
+  try{
+
+    /*
+      IMPORTANT:
+      Send exactly what the Worker expects.
+    */
+
+    const response=
+      await fetch(
+        "/api/ai/chat",
+        {
+          method:"POST",
+
+          headers:{
+            "Content-Type":
+              "application/json"
+          },
+
+          body:JSON.stringify({
+            message:text
+          })
+        }
+      );
+
+
+    const raw=
+      await response.text();
+
+
+    let data;
+
+
+    try{
+
+      data=
+        raw
+          ? JSON.parse(raw)
+          : {};
+
+    }catch{
+
+      data={
+        raw
+      };
+
+    }
+
+
+    if(!response.ok){
+
+      throw new Error(
+
+        data.error ||
+        data.message ||
+        data.raw ||
+        `HTTP ${response.status}`
+
+      );
+
+    }
+
+
+    /*
+      Accept basically every response
+      format your Worker might return.
+    */
+
+    const answer=
+      extractAIResponse(data);
+
+
+    typing.classList.remove("show");
+
+
+    addMessage(
+      answer,
+      "ai"
+    );
+
+
+  }catch(error){
+
+    typing.classList.remove("show");
+
+
+    addMessage(
+
+      "⚠️ Manager connection error: "+
+      error.message,
+
+      "ai"
+
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   RESPONSE EXTRACTOR
+===================================================== */
+
+function extractAIResponse(data){
+
+  if(data===null || data===undefined){
+    return "The manager returned an empty response.";
+  }
+
+
+  if(typeof data==="string"){
+    return data;
+  }
+
+
+  /*
+    Direct common fields.
+  */
+
+  const fields=[
+
+    "reply",
+    "response",
+    "answer",
+    "message",
+    "output",
+    "result",
+    "content",
+    "text"
+
+  ];
+
+
+  for(const field of fields){
+
+    if(
+      typeof data[field]==="string" &&
+      data[field].trim()
+    ){
+
+      return data[field];
+
+    }
+
+  }
+
+
+  /*
+    Workers AI sometimes returns:
+    { response: { response: "..." } }
+  */
+
+  if(
+    data.response &&
+    typeof data.response==="object"
+  ){
+
+    const nested=
+      extractAIResponse(
+        data.response
+      );
+
+    if(nested){
+      return nested;
+    }
+
+  }
+
+
+  /*
+    Common AI result structures.
+  */
+
+  if(
+    data.result &&
+    typeof data.result==="object"
+  ){
+
+    const nested=
+      extractAIResponse(
+        data.result
+      );
+
+    if(nested){
+      return nested;
+    }
+
+  }
+
+
+  /*
+    Workers AI can sometimes expose
+    a response field inside result.
+  */
+
+  if(
+    data.result?.response
+  ){
+
+    return String(
+      data.result.response
+    );
+
+  }
+
+
+  /*
+    Last resort:
+    don't falsely say "no response".
+  */
+
+  return JSON.stringify(
+    data,
+    null,
+    2
+  );
+
+}
+
+
+/* =====================================================
+   CHAT UI
+===================================================== */
+
+function addMessage(text,type){
+
+  const messages=
+    document.getElementById("messages");
+
+
+  const div=
+    document.createElement("div");
+
+
+  div.className=
+    "msg "+
+    (
+      type==="user"
+        ? "user"
+        : ""
+    );
+
+
+  div.innerHTML=`
+
+    <div class="bubble">
+      ${renderText(text)}
+    </div>
+
+  `;
+
+
+  messages.insertBefore(
+
+    div,
+
+    document.getElementById(
+      "typingMsg"
+    )
+
+  );
+
+
+  scrollChat();
+
+}
+
+
+function renderText(text){
+
+  let safe=
+    escapeHtml(
+      String(text)
+    );
+
+
+  /*
+    Code blocks first.
+  */
+
+  safe=
+    safe.replace(
+      /```([\s\S]*?)```/g,
+      '<div class="code">$1</div>'
+    );
+
+
+  /*
+    Bold.
+  */
+
+  safe=
+    safe.replace(
+      /\*\*(.*?)\*\*/g,
+      "<strong>$1</strong>"
+    );
+
+
+  /*
+    Inline code.
+  */
+
+  safe=
+    safe.replace(
+      /`([^`]+)`/g,
+      "<code>$1</code>"
+    );
+
+
+  /*
+    Headings.
+  */
+
+  safe=
+    safe.replace(
+      /^### (.*?)$/gm,
+      "<strong>$1</strong>"
+    );
+
+
+  /*
+    Bullets.
+  */
+
+  safe=
+    safe.replace(
+      /^[-•] (.*?)$/gm,
+      "• $1"
+    );
+
+
+  /*
+    Newlines.
+  */
+
+  safe=
+    safe.replace(
+      /\n/g,
+      "<br>"
+    );
+
+
+  return safe;
+
+}
+
+
+function scrollChat(){
+
+  const messages=
+    document.getElementById(
+      "messages"
+    );
+
+
+  messages.scrollTop=
+    messages.scrollHeight;
+
+}
+
+
+function clearChat(){
+
+  document.getElementById(
+    "messages"
+  ).innerHTML=`
+
+    <div class="msg">
+
+      <div class="bubble">
+
+        <strong>
+          Hellow 👋
+        </strong>
+
+        <br><br>
+
+        New manager conversation started.
+
+      </div>
+
+    </div>
+
+
+    <div
+      class="msg"
+      id="typingMsg">
+
+      <div
+        class="typing"
+        id="typing">
+
+        <i></i>
+        <i></i>
+        <i></i>
+
+      </div>
+
+    </div>
+
+  `;
+
+}
+
+
+/* =====================================================
+   REFRESH
+===================================================== */
+
+async function refreshAll(){
+
+  await Promise.allSettled([
+
+    loadHealth(),
+
+    loadDashboard(),
+
+    loadTasks(),
+
+    loadActivity(),
+
+    loadIntegrations(),
+
+    loadProductFallback()
+
+  ]);
+
+}
+
+
+/* =====================================================
+   ESCAPE
+===================================================== */
+
+function escapeHtml(value){
+
+  return String(value)
+
+    .replaceAll(
+      "&",
+      "&amp;"
+    )
+
+    .replaceAll(
+      "<",
+      "&lt;"
+    )
+
+    .replaceAll(
+      ">",
+      "&gt;"
+    )
+
+    .replaceAll(
+      '"',
+      "&quot;"
+    )
+
+    .replaceAll(
+      "'",
+      "&#039;"
+    );
+
+}
+
+
+/* =====================================================
+   START
+===================================================== */
+
+refreshAll();
+
+
+setInterval(
+  refreshAll,
+  30000
+);
+
+</script>
+
+</body>
+</html>
