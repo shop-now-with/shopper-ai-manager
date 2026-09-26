@@ -18,3 +18,8 @@ crons = ["0 4 * * *"]
 binding = "DB"
 database_name = "product-db"
 database_id = "7fc3ac99-20b3-40f1-a022-1a11a0b4a177"
+
+[assets]
+directory = "./"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
