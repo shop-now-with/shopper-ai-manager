@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Shopper's Suggestions — AI Manager</title>
+<style>
+:root{
+  --orange:#ff7a18;
+  --orange2:#ff9a3d;
+  --blue:#071a3a;
+  --blue2:#0d2b5c;
+  --ink:#10213f;
+  --muted:#6f7c91;
+  --line:#e6ebf2;
+  --bg:#f5f7fb;
+  --card:#ffffff;
+  --good:#15945b;
+  --bad:#d94343;
+  --shadow:0 16px 45px rgba(7,26,58,.10);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:
+    radial-gradient(circle at 10% 0%,rgba(255,122,24,.10),transparent 28rem),
+    radial-gradient(circle at 90% 10%,rgba(13,43,92,.10),transparent 30rem),
+    var(--bg);
+  color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+button,input,textarea,select{font:inherit}
+button{cursor:pointer}
+.app{min-height:100vh}
+.topbar{
+  position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;
+  padding:14px 18px;background:rgba(255,255,255,.84);backdrop-filter:blur(18px);
+  border-bottom:1px solid rgba(230,235,242,.9)
+}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand-mark{
+  width:42px;height:42px;border-radius:13px;display:grid;place-items:center;
+  color:#fff;font-weight:900;background:linear-gradient(135deg,var(--orange),#ffb15f);
+  box-shadow:0 10px 25px rgba(255,122,24,.25)
+}
+.brand-text{min-width:0}
+.brand-title{font-weight:900;letter-spacing:-.5px;white-space:nowrap}
+.brand-sub{font-size:11px;color:var(--muted)}
+.top-actions{margin-left:auto;display:flex;gap:8px}
+.icon-btn,.primary,.secondary,.danger{
+  min-height:42px;border:0;border-radius:12px;padding:0 14px;font-weight:800
+}
+.icon-btn{background:#fff;border:1px solid var(--line);color:var(--blue)}
+.primary{color:#fff;background:linear-gradient(135deg,var(--orange),#ff941f);box-shadow:0 9px 22px rgba(255,122,24,.22)}
+.secondary{background:#eef3fa;color:var(--blue)}
+.danger{background:#fff0f0;color:var(--bad)}
+.layout{display:grid;grid-template-columns:235px minmax(0,1fr);max-width:1500px;margin:auto}
+.sidebar{
+  min-height:calc(100vh - 71px);padding:18px 12px;border-right:1px solid var(--line);
+  position:sticky;top:71px;align-self:start
+}
+.nav-btn{
+  width:100%;text-align:left;border:0;background:transparent;color:var(--muted);
+  padding:13px 14px;border-radius:12px;font-weight:800;margin:3px 0
+}
+.nav-btn:hover,.nav-btn.active{background:#fff;color:var(--blue);box-shadow:0 7px 22px rgba(7,26,58,.07)}
+.nav-btn.active{border-left:3px solid var(--orange)}
+.content{padding:24px;min-width:0}
+.page{display:none;animation:fade .28s ease}
+.page.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+.hero{
+  border-radius:24px;padding:25px;color:#fff;position:relative;overflow:hidden;
+  background:linear-gradient(120deg,#071a3a 0%,#0d2b5c 58%,#123e78 100%);
+  box-shadow:var(--shadow)
+}
+.hero:after{
+  content:"";position:absolute;width:260px;height:260px;border-radius:50%;
+  right:-80px;top:-120px;background:rgba(255,122,24,.28);filter:blur(3px);
+  animation:float 7s ease-in-out infinite
+}
+@keyframes float{50%{transform:translate(-25px,25px) scale(1.12)}}
+.hero h1{margin:0 0 8px;font-size:clamp(26px,4vw,42px);letter-spacing:-1.5px}
+.hero p{margin:0;color:#dbe6f6;max-width:720px;line-height:1.6}
+.hero-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.grid{display:grid;gap:15px}
+.stats{grid-template-columns:repeat(5,minmax(0,1fr));margin-top:18px}
+.card{
+  background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:18px;
+  padding:18px;box-shadow:0 8px 30px rgba(7,26,58,.055)
+}
+.stat-label{font-size:12px;color:var(--muted);font-weight:800}
+.stat-value{font-size:28px;font-weight:950;margin-top:5px}
+.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:25px 0 12px}
+.section-head h2{margin:0;font-size:18px}
+.section-head p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.chat{
+  display:grid;grid-template-rows:minmax(360px,55vh) auto;overflow:hidden
+}
+.messages{overflow:auto;padding:4px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:86%;padding:12px 14px;border-radius:15px;line-height:1.5;white-space:pre-wrap}
+.msg.ai{background:#f0f4f9;align-self:flex-start}
+.msg.user{background:var(--blue);color:#fff;align-self:flex-end}
+.composer{display:flex;gap:8px;margin-top:12px}
+.composer textarea{flex:1;min-height:48px;max-height:130px;resize:vertical}
+input,textarea,select{
+  width:100%;border:1px solid var(--line);border-radius:12px;background:#fff;
+  color:var(--ink);padding:12px;outline:none
+}
+input:focus,textarea:focus,select:focus{border-color:var(--orange);box-shadow:0 0 0 3px rgba(255,122,24,.10)}
+.two{grid-template-columns:1fr 1fr}
+.three{grid-template-columns:repeat(3,1fr)}
+.table-wrap{overflow:auto}
+table{width:100%;border-collapse:collapse;min-width:700px}
+th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line);font-size:13px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.badge{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:900;background:#eef3fa}
+.good{background:#eaf8f1;color:var(--good)}
+.pending{background:#fff5e8;color:#b45d00}
+.off{background:#f3f4f6;color:#697386}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field{display:grid;gap:6px}
+.field label{font-size:12px;font-weight:850;color:var(--muted)}
+.full{grid-column:1/-1}
+.actions{display:flex;gap:8px;flex-wrap:wrap}
+.empty{text-align:center;color:var(--muted);padding:35px 15px}
+.toast{
+  position:fixed;right:18px;bottom:18px;z-index:50;background:var(--blue);color:#fff;
+  padding:12px 16px;border-radius:13px;box-shadow:var(--shadow);opacity:0;transform:translateY(10px);
+  pointer-events:none;transition:.25s
+}
+.toast.show{opacity:1;transform:none}
+.mobile-nav{display:none}
+.small{font-size:12px;color:var(--muted)}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pulse{animation:pulse 2.3s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 7px rgba(255,122,24,.07)}}
+@media(max-width:1050px){
+  .stats{grid-template-columns:repeat(3,1fr)}
+}
+@media(max-width:760px){
+  .layout{display:block}
+  .sidebar{display:none}
+  .content{padding:15px 13px 90px}
+  .topbar{padding:11px 12px}
+  .brand-mark{width:38px;height:38px}
+  .brand-sub{display:none}
+  .top-actions .secondary{display:none}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .two,.three,.form-grid{grid-template-columns:1fr}
+  .hero{padding:20px;border-radius:19px}
+  .mobile-nav{
+    position:fixed;display:grid;grid-template-columns:repeat(4,1fr);bottom:0;left:0;right:0;
+    z-index:30;background:rgba(255,255,255,.92);backdrop-filter:blur(18px);
+    border-top:1px solid var(--line);padding:7px 8px
+  }
+  .mobile-nav button{border:0;background:transparent;padding:8px 3px;color:var(--muted);font-size:11px;font-weight:850}
+  .mobile-nav button.active{color:var(--orange)}
+  .composer{align-items:stretch}
+  .composer .primary{min-width:74px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">SS</div>
+    <div class="brand-text">
+      <div class="brand-title">Shopper's Suggestions</div>
+      <div class="brand-sub">AI Manager Control Center</div>
+    </div>
+  </div>
+  <div class="top-actions">
+    <button class="secondary" id="refreshBtn">Refresh</button>
+    <button class="primary" id="runBtn">Run Manager</button>
+  </div>
+</header>
+
+<div class="layout">
+<aside class="sidebar">
+  <button class="nav-btn active" data-page="dashboard">⌂ Dashboard</button>
+  <button class="nav-btn" data-page="chat">✦ AI Chat</button>
+  <button class="nav-btn" data-page="products">▦ Products</button>
+  <button class="nav-btn" data-page="research">⌕ Research</button>
+  <button class="nav-btn" data-page="drafts">◇ Drafts</button>
+  <button class="nav-btn" data-page="marketing">↗ Marketing</button>
+  <button class="nav-btn" data-page="automation">◷ Automation</button>
+  <button class="nav-btn" data-page="integrations">⌘ Integrations</button>
+  <button class="nav-btn" data-page="logs">≡ Activity</button>
+</aside>
+
+<main class="content">
+<section class="page active" id="page-dashboard">
+  <div class="hero">
+    <h1>AI Manager</h1>
+    <p>Your control center for product research, content, marketing, automation and Shopper's Suggestions publishing.</p>
+    <div class="hero-row">
+      <button class="primary" data-go="chat">Talk to Manager</button>
+      <button class="secondary" data-go="research">Research a product</button>
+    </div>
+  </div>
+  <div class="grid stats">
+    <div class="card"><div class="stat-label">Products</div><div class="stat-value" id="sProducts">—</div></div>
+    <div class="card"><div class="stat-label">Published</div><div class="stat-value" id="sPublished">—</div></div>
+    <div class="card"><div class="stat-label">Featured</div><div class="stat-value" id="sFeatured">—</div></div>
+    <div class="card"><div class="stat-label">Drafts</div><div class="stat-value" id="sDrafts">—</div></div>
+    <div class="card"><div class="stat-label">Pending tasks</div><div class="stat-value" id="sTasks">—</div></div>
+  </div>
+  <div class="section-head"><div><h2>System status</h2><p>Live connection state from the Manager Worker.</p></div></div>
+  <div class="card" id="statusCard">Loading...</div>
+</section>
+
+<section class="page" id="page-chat">
+  <div class="section-head"><div><h2>AI Chat</h2><p>Give the Manager instructions, ideas or questions.</p></div></div>
+  <div class="card chat">
+    <div class="messages" id="messages">
+      <div class="msg ai">Hey. I'm your Shopper's Suggestions Manager. Tell me what you want to research, improve, analyze or prepare.</div>
+    </div>
+    <form class="composer" id="chatForm">
+      <textarea id="chatInput" placeholder="e.g. Research useful tech products for Indian shoppers..." required></textarea>
+      <button class="primary" id="chatSend">Send</button>
+    </form>
+  </div>
+</section>
+
+<section class="page" id="page-products">
+  <div class="section-head"><div><h2>Products</h2><p>Your live products from product-db.</p></div><button class="secondary" id="loadProducts">Reload</button></div>
+  <div class="card table-wrap"><table><thead><tr><th>Product</th><th>Category</th><th>Status</th><th>Featured</th><th>Actions</th></tr></thead><tbody id="productRows"><tr><td colspan="5">Loading...</td></tr></tbody></table></div>
+</section>
+
+<section class="page" id="page-research">
+  <div class="section-head"><div><h2>Product Research</h2><p>Ask the AI to turn an idea into a structured product opportunity.</p></div></div>
+  <div class="card">
+    <form id="researchForm" class="form-grid">
+      <div class="field full"><label>What should the Manager research?</label><textarea id="researchIdea" rows="5" placeholder="Example: useful desk accessories for students and creators"></textarea></div>
+      <div class="actions full"><button class="primary">Start research</button></div>
+    </form>
+  </div>
+  <div class="card" style="margin-top:14px"><pre id="researchResult" style="white-space:pre-wrap;margin:0;font:13px/1.6 inherit;color:var(--ink)">Research results will appear here.</pre></div>
+</section>
+
+<section class="page" id="page-drafts">
+  <div class="section-head"><div><h2>Drafts</h2><p>Review AI-created listings before publishing.</p></div><button class="secondary" id="loadDrafts">Reload</button></div>
+  <div id="draftList" class="grid two"></div>
+</section>
+
+<section class="page" id="page-marketing">
+  <div class="section-head"><div><h2>Marketing Studio</h2><p>Create captions, hooks and hashtags from an existing product.</p></div></div>
+  <div class="card">
+    <div class="form-grid">
+      <div class="field"><label>Product ID</label><input id="marketingProductId" type="number" placeholder="e.g. 2"></div>
+      <div class="field" style="align-self:end"><button class="primary" id="marketingBtn">Generate marketing</button></div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px"><pre id="marketingResult" style="white-space:pre-wrap;margin:0;font:13px/1.6 inherit">Marketing output will appear here.</pre></div>
+</section>
+
+<section class="page" id="page-automation">
+  <div class="section-head"><div><h2>Automation</h2><p>The Worker can run scheduled jobs once the required integrations are connected.</p></div></div>
+  <div class="grid two">
+    <div class="card"><h3>Daily Manager</h3><p class="small">Future flow: discover → research → draft → check → approval → publish → marketing.</p><button class="primary pulse" id="manualRun">Run now</button></div>
+    <div class="card"><h3>Safety gate</h3><p class="small">Keep public publishing behind an approval step until every external integration is verified.</p><span class="badge good">Recommended</span></div>
+  </div>
+</section>
+
+<section class="page" id="page-integrations">
+  <div class="section-head"><div><h2>Integrations</h2><p>Connections the Manager can use.</p></div></div>
+  <div class="grid two" id="integrationGrid"></div>
+</section>
+
+<section class="page" id="page-logs">
+  <div class="section-head"><div><h2>Activity</h2><p>Recent Manager actions and errors.</p></div><button class="secondary" id="loadLogs">Reload</button></div>
+  <div class="card table-wrap"><table><thead><tr><th>Time</th><th>Level</th><th>Action</th><th>Message</th></tr></thead><tbody id="logRows"><tr><td colspan="4">Loading...</td></tr></tbody></table></div>
+</section>
+</main>
+</div>
+
+<nav class="mobile-nav">
+  <button class="active" data-page="dashboard">Home</button>
+  <button data-page="chat">AI</button>
+  <button data-page="products">Products</button>
+  <button data-page="automation">Auto</button>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = ""; // same-origin when index.html is served by the Manager Worker
+const $ = (id) => document.getElementById(id);
+
+function toast(message){
+  const el=$("toast"); el.textContent=message; el.classList.add("show");
+  clearTimeout(window.__toast); window.__toast=setTimeout(()=>el.classList.remove("show"),2600);
+}
+
+async function api(path, options={}){
+  const res=await fetch(API+path,{
+    ...options,
+    headers:{"content-type":"application/json",...(options.headers||{})}
+  });
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok || data.ok===false) throw new Error(data.error||`Request failed (${res.status})`);
+  return data;
+}
+
+function showPage(name){
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+  const page=$("page-"+name); if(page) page.classList.add("active");
+  document.querySelectorAll("[data-page]").forEach(b=>b.classList.toggle("active",b.dataset.page===name));
+  if(name==="products") loadProducts();
+  if(name==="drafts") loadDrafts();
+  if(name==="logs") loadLogs();
+}
+document.querySelectorAll("[data-page]").forEach(b=>b.addEventListener("click",()=>showPage(b.dataset.page)));
+document.querySelectorAll("[data-go]").forEach(b=>b.addEventListener("click",()=>showPage(b.dataset.go)));
+
+async function loadDashboard(){
+  try{
+    const d=await api("/api/dashboard");
+    $("sProducts").textContent=d.products;
+    $("sPublished").textContent=d.published;
+    $("sFeatured").textContent=d.featured;
+    $("sDrafts").textContent=d.drafts;
+    $("sTasks").textContent=d.pending_tasks;
+    const i=d.integrations||{};
+    $("statusCard").innerHTML=`
+      <div class="grid three">
+        <div><b>D1</b><br><span class="badge good">Connected</span></div>
+        <div><b>Workers AI</b><br><span class="badge ${i.workers_ai?"good":"off"}">${i.workers_ai?"Connected":"Not connected"}</span></div>
+        <div><b>Website</b><br><span class="badge good">Connected</span></div>
+      </div>`;
+    renderIntegrations(i);
+  }catch(e){
+    $("statusCard").innerHTML=`<span class="badge off">Offline</span> ${e.message}`;
+  }
+}
+
+async function loadProducts(){
+  const body=$("productRows");
+  body.innerHTML="<tr><td colspan='5'>Loading...</td></tr>";
+  try{
+    const d=await api("/api/products?limit=100");
+    if(!d.products.length){body.innerHTML="<tr><td colspan='5' class='empty'>No products yet.</td></tr>";return}
+    body.innerHTML=d.products.map(p=>`
+      <tr>
+        <td><b>${esc(p.title)}</b><div class="small">ID ${p.id}</div></td>
+        <td>${esc(p.category)}</td>
+        <td><span class="badge ${p.published?"good":"pending"}">${p.published?"Published":"Draft"}</span></td>
+        <td>${p.featured?"★":"—"}</td>
+        <td><div class="actions">
+          <button class="secondary smallbtn" data-classify="${p.id}">Classify</button>
+          <button class="secondary smallbtn" data-improve="${p.id}">Improve</button>
+          <button class="secondary smallbtn" data-market="${p.id}">Marketing</button>
+        </div></td>
+      </tr>`).join("");
+    body.querySelectorAll("[data-classify]").forEach(b=>b.onclick=()=>productAction("classify",b.dataset.classify));
+    body.querySelectorAll("[data-improve]").forEach(b=>b.onclick=()=>productAction("improve",b.dataset.improve));
+    body.querySelectorAll("[data-market]").forEach(b=>b.onclick=()=>{showPage("marketing");$("marketingProductId").value=b.dataset.market});
+  }catch(e){body.innerHTML=`<tr><td colspan="5">${esc(e.message)}</td></tr>`}
+}
+
+async function productAction(kind,id){
+  try{
+    toast("AI is working...");
+    const d=await api(`/api/products/${kind}`,{method:"POST",body:JSON.stringify({product_id:Number(id)})});
+    alert(JSON.stringify(d.result,null,2));
+    toast("Completed");
+  }catch(e){toast(e.message)}
+}
+
+async function loadDrafts(){
+  const wrap=$("draftList"); wrap.innerHTML="<div class='card'>Loading...</div>";
+  try{
+    const d=await api("/api/drafts");
+    if(!d.drafts.length){wrap.innerHTML="<div class='card empty'>No drafts yet.</div>";return}
+    wrap.innerHTML=d.drafts.map(x=>`
+      <article class="card">
+        <span class="badge ${x.status==="published"?"good":"pending"}">${esc(x.status)}</span>
+        <h3>${esc(x.title)}</h3>
+        <p class="small">${esc(x.category)}</p>
+        <p>${esc(x.description)}</p>
+        ${x.status==="draft"?`<button class="primary" data-publish="${x.id}">Publish</button>`:""}
+      </article>`).join("");
+    wrap.querySelectorAll("[data-publish]").forEach(b=>b.onclick=()=>publishDraft(b.dataset.publish));
+  }catch(e){wrap.innerHTML=`<div class="card">${esc(e.message)}</div>`}
+}
+
+async function publishDraft(id){
+  if(!confirm("Publish this draft to Shopper's Suggestions?")) return;
+  try{await api(`/api/drafts/${id}/publish`,{method:"POST",body:"{}"});toast("Published");loadDrafts();loadDashboard()}
+  catch(e){toast(e.message)}
+}
+
+async function loadLogs(){
+  const body=$("logRows");
+  try{
+    const d=await api("/api/logs");
+    body.innerHTML=d.logs.length?d.logs.map(x=>`
+      <tr><td>${esc(x.created_at)}</td><td><span class="badge ${x.level==="error"?"off":"good"}">${esc(x.level)}</span></td><td>${esc(x.action)}</td><td>${esc(x.message)}</td></tr>`).join("")
+      :"<tr><td colspan='4' class='empty'>No activity yet.</td></tr>";
+  }catch(e){body.innerHTML=`<tr><td colspan="4">${esc(e.message)}</td></tr>`}
+}
+
+function renderIntegrations(i){
+  const labels=[
+    ["workers_ai","Workers AI"],["github_media","GitHub Media"],["instagram","Instagram"],
+    ["affiliate","Affiliate API"],["telegram","Telegram"],["browser_automation","Browser Automation"]
+  ];
+  $("integrationGrid").innerHTML=labels.map(([key,label])=>`
+    <div class="card">
+      <h3>${label}</h3>
+      <span class="badge ${i[key]?"good":"off"}">${i[key]?"Connected":"Not connected"}</span>
+      <p class="small">${i[key]?"Credentials/configuration detected.":"Add the authorized integration later."}</p>
+    </div>`).join("");
+}
+
+$("chatForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const input=$("chatInput"), text=input.value.trim(); if(!text)return;
+  addMsg(text,"user"); input.value="";
+  addMsg("Thinking…","ai","thinking");
+  try{
+    const d=await api("/api/ai/chat",{method:"POST",body:JSON.stringify({message:text})});
+    const t=document.querySelector("[data-thinking]"); if(t)t.remove();
+    addMsg(d.answer||"No response.","ai");
+  }catch(err){
+    const t=document.querySelector("[data-thinking]"); if(t)t.remove();
+    addMsg("I couldn't complete that request: "+err.message,"ai");
+  }
+});
+
+function addMsg(text,who,extra=""){
+  const el=document.createElement("div");el.className=`msg ${who}`;if(extra)el.dataset[extra]="1";el.textContent=text;
+  $("messages").appendChild(el);$("messages").scrollTop=$("messages").scrollHeight;
+}
+
+$("researchForm").addEventListener("submit",async e=>{
+  e.preventDefault();$("researchResult").textContent="Researching...";
+  try{const d=await api("/api/research",{method:"POST",body:JSON.stringify({idea:$("researchIdea").value})});$("researchResult").textContent=JSON.stringify(d.result,null,2)}
+  catch(err){$("researchResult").textContent=err.message}
+});
+
+$("marketingBtn").onclick=async()=>{
+  const id=Number($("marketingProductId").value);if(!id){toast("Enter a product ID");return}
+  $("marketingResult").textContent="Generating...";
+  try{const d=await api("/api/marketing",{method:"POST",body:JSON.stringify({product_id:id})});$("marketingResult").textContent=JSON.stringify(d.result,null,2)}
+  catch(e){$("marketingResult").textContent=e.message}
+};
+
+async function runManager(){
+  toast("Manager run requested");
+  try{
+    const d=await api("/api/health");
+    toast(d.ok?"Manager is online":"Manager unavailable");
+    loadDashboard();
+  }catch(e){toast(e.message)}
+}
+$("runBtn").onclick=runManager;
+$("manualRun").onclick=runManager;
+$("refreshBtn").onclick=()=>{loadDashboard();toast("Refreshed")};
+$("loadProducts").onclick=loadProducts;
+$("loadDrafts").onclick=loadDrafts;
+$("loadLogs").onclick=loadLogs;
+
+function esc(v){
+  return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+loadDashboard();
+</script>
+</body>
+</html>
