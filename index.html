@@ -1,0 +1,1298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#ffffff">
+
+<title>Shopper's Suggestions — AI Manager</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #f5f6f8;
+  --text: #111318;
+  --muted: #747984;
+  --line: #e7e8ec;
+  --orange: #ff7a00;
+  --blue: #1459d9;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Display",
+    "Segoe UI",
+    sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: -25%;
+  z-index: -1;
+
+  background:
+    radial-gradient(
+      circle at 18% 15%,
+      rgba(255, 122, 0, 0.13),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 82% 78%,
+      rgba(20, 89, 217, 0.12),
+      transparent 30%
+    );
+
+  animation: backgroundMove 12s ease-in-out infinite alternate;
+}
+
+@keyframes backgroundMove {
+  to {
+    transform: scale(1.08) translate(2%, -2%);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes typingDot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.3;
+  }
+
+  30% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
+}
+
+@keyframes onlinePulse {
+  50% {
+    box-shadow:
+      0 0 0 8px rgba(25, 169, 85, 0);
+  }
+}
+
+/* APP */
+
+.app {
+  max-width: 980px;
+  min-height: 100vh;
+  margin: auto;
+}
+
+/* HEADER */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+
+  padding: 14px 16px;
+
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(22px);
+
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* YOUR IMAGE */
+
+.logo {
+  width: 48px;
+  height: 48px;
+
+  flex: 0 0 48px;
+
+  display: grid;
+  place-items: center;
+
+  overflow: hidden;
+
+  background: #ffffff;
+
+  border: 1px solid #eeeeee;
+  border-radius: 14px;
+}
+
+.logo img {
+  width: 100%;
+  height: 100%;
+
+  /*
+   * IMPORTANT:
+   * Keeps your white-background logo proportional.
+   * It will NOT stretch or squeeze.
+   */
+  object-fit: contain;
+
+  display: block;
+}
+
+.brand {
+  min-width: 0;
+}
+
+.brand h1 {
+  margin: 0;
+
+  font-size: 16px;
+  font-weight: 800;
+
+  letter-spacing: -0.2px;
+}
+
+.brand p {
+  margin: 3px 0 0;
+
+  color: var(--muted);
+
+  font-size: 11px;
+}
+
+.online {
+  margin-left: auto;
+
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  color: #14803c;
+
+  font-size: 11px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+
+  border-radius: 50%;
+
+  background: #19a955;
+
+  animation: onlinePulse 1.8s infinite;
+}
+
+/* MAIN */
+
+main {
+  padding: 22px 14px 70px;
+}
+
+/* HERO */
+
+.hero {
+  padding: 14px 8px 18px;
+
+  text-align: center;
+
+  animation: rise 0.6s ease both;
+}
+
+.hero h2 {
+  margin: 0;
+
+  font-size: clamp(29px, 7vw, 44px);
+
+  letter-spacing: -1.5px;
+}
+
+.hero h2 span {
+  background:
+    linear-gradient(
+      90deg,
+      var(--orange),
+      var(--blue)
+    );
+
+  -webkit-background-clip: text;
+  background-clip: text;
+
+  color: transparent;
+}
+
+.hero p {
+  max-width: 650px;
+
+  margin: 9px auto;
+
+  color: var(--muted);
+
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* CHAT */
+
+.chat {
+  overflow: hidden;
+
+  background: rgba(255, 255, 255, 0.84);
+
+  border: 1px solid rgba(0, 0, 0, 0.07);
+
+  border-radius: 26px;
+
+  box-shadow:
+    0 20px 70px rgba(20, 30, 50, 0.09);
+
+  animation:
+    rise 0.7s 0.08s ease both;
+}
+
+/* CHAT HEADER */
+
+.chathead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 14px 16px;
+
+  border-bottom: 1px solid var(--line);
+}
+
+.aimark {
+  width: 34px;
+  height: 34px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 11px;
+
+  background: #111318;
+  color: white;
+
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chathead strong {
+  font-size: 14px;
+}
+
+.chathead small {
+  display: block;
+
+  margin-top: 2px;
+
+  color: var(--muted);
+
+  font-size: 11px;
+}
+
+/* MESSAGES */
+
+.messages {
+  min-height: 410px;
+  max-height: 62vh;
+
+  overflow-y: auto;
+
+  padding: 18px 14px;
+
+  scroll-behavior: smooth;
+}
+
+.row {
+  display: flex;
+
+  margin: 8px 0;
+
+  animation:
+    rise 0.3s ease both;
+}
+
+.row.user {
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: min(82%, 700px);
+
+  padding: 12px 14px;
+
+  border-radius: 18px;
+
+  font-size: 14px;
+  line-height: 1.58;
+
+  word-break: break-word;
+}
+
+.row.assistant .bubble {
+  background: #f0f1f4;
+
+  border-bottom-left-radius: 6px;
+}
+
+.row.user .bubble {
+  background: #111318;
+  color: white;
+
+  border-bottom-right-radius: 6px;
+}
+
+/* MARKDOWN */
+
+.bubble strong {
+  font-weight: 800;
+}
+
+.bubble code {
+  padding: 2px 5px;
+
+  border-radius: 6px;
+
+  background: rgba(0, 0, 0, 0.08);
+
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+
+  font-size: 0.9em;
+}
+
+.row.user code {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.bubble ul {
+  margin: 7px 0;
+
+  padding-left: 19px;
+}
+
+.bubble li {
+  margin: 3px 0;
+}
+
+/* CODE BLOCK */
+
+.code {
+  display: block;
+
+  overflow: auto;
+
+  margin: 8px 0 2px;
+  padding: 11px;
+
+  border-radius: 10px;
+
+  background: #111318;
+  color: #f5f7fa;
+
+  font:
+    12px
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+
+  white-space: pre-wrap;
+}
+
+/* THINKING */
+
+.typing {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.typing i {
+  width: 6px;
+  height: 6px;
+
+  border-radius: 50%;
+
+  background: #7d828c;
+
+  animation:
+    typingDot 1.1s infinite;
+}
+
+.typing i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.thinking {
+  margin-left: 5px;
+
+  color: var(--muted);
+
+  font-size: 11px;
+}
+
+/* COMPOSER */
+
+.composer {
+  padding: 12px;
+
+  background: rgba(255, 255, 255, 0.9);
+
+  border-top: 1px solid var(--line);
+}
+
+.compose {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+textarea {
+  flex: 1;
+
+  min-height: 48px;
+  max-height: 150px;
+
+  resize: none;
+
+  padding: 13px 14px;
+
+  border: 1px solid #dfe1e6;
+
+  border-radius: 17px;
+
+  outline: none;
+
+  background: #fafbfc;
+
+  font:
+    14px
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  transition: 0.2s;
+}
+
+textarea:focus {
+  border-color: #9aa0aa;
+
+  box-shadow:
+    0 0 0 4px rgba(0, 0, 0, 0.04);
+}
+
+.send {
+  width: 48px;
+  height: 48px;
+
+  flex: 0 0 48px;
+
+  border: 0;
+
+  border-radius: 16px;
+
+  background: #111318;
+  color: white;
+
+  cursor: pointer;
+
+  font-size: 18px;
+
+  transition: 0.2s;
+}
+
+.send:hover {
+  background: #242831;
+
+  transform: translateY(-2px);
+}
+
+.send:disabled {
+  opacity: 0.45;
+
+  transform: none;
+}
+
+.hint {
+  margin-top: 7px;
+
+  text-align: center;
+
+  color: #9a9ea6;
+
+  font-size: 10px;
+}
+
+/* QUICK ACTIONS */
+
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 8px;
+
+  margin-top: 13px;
+}
+
+.tool {
+  padding: 9px 12px;
+
+  border: 1px solid var(--line);
+
+  border-radius: 13px;
+
+  background: rgba(255, 255, 255, 0.78);
+
+  cursor: pointer;
+
+  font-size: 12px;
+
+  transition: 0.2s;
+}
+
+.tool:hover {
+  background: white;
+
+  transform: translateY(-2px);
+}
+
+/* FOOTER */
+
+.footer {
+  padding: 22px 0;
+
+  text-align: center;
+
+  color: #a0a4ac;
+
+  font-size: 10px;
+}
+
+/* MOBILE */
+
+@media (max-width: 560px) {
+  .online {
+    font-size: 0;
+  }
+
+  .messages {
+    min-height: 390px;
+    max-height: 65vh;
+  }
+
+  .bubble {
+    max-width: 90%;
+  }
+}
+
+/* REDUCED MOTION */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+
+    scroll-behavior: auto !important;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="app">
+
+  <!-- HEADER -->
+
+  <header class="topbar">
+
+    <div class="top">
+
+      <div class="logo">
+
+        <img
+          src="2E7A6582-42BB-48D4-84D8-71C3DA3ED841.jpeg"
+          alt="Shopper's Suggestions"
+        >
+
+      </div>
+
+      <div class="brand">
+
+        <h1>
+          Shopper's Suggestions
+        </h1>
+
+        <p>
+          AI Manager
+        </p>
+
+      </div>
+
+      <div class="online">
+
+        <span class="dot"></span>
+
+        Online
+
+      </div>
+
+    </div>
+
+  </header>
+
+
+  <!-- MAIN -->
+
+  <main>
+
+    <section class="hero">
+
+      <h2>
+        Meet your
+        <span>AI Manager</span>
+      </h2>
+
+      <p>
+        Research products, improve listings,
+        create marketing ideas and plan the next move.
+      </p>
+
+    </section>
+
+
+    <!-- CHAT -->
+
+    <section class="chat">
+
+      <div class="chathead">
+
+        <div class="aimark">
+          AI
+        </div>
+
+        <div>
+
+          <strong>
+            Manager
+          </strong>
+
+          <small>
+            Context stays active for this chat · expires after 24 hours
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div
+        id="messages"
+        class="messages"
+      ></div>
+
+
+      <div class="composer">
+
+        <div class="compose">
+
+          <textarea
+            id="input"
+            rows="1"
+            placeholder="Message your AI Manager…"
+          ></textarea>
+
+          <button
+            id="send"
+            class="send"
+            aria-label="Send"
+          >
+            ↑
+          </button>
+
+        </div>
+
+        <div class="hint">
+          Enter to send · Shift + Enter for a new line
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- QUICK ACTIONS -->
+
+    <div class="tools">
+
+      <button
+        class="tool"
+        data-prompt="Find some product opportunities I should research today."
+      >
+        Product ideas
+      </button>
+
+      <button
+        class="tool"
+        data-prompt="Help me create a strong affiliate product listing."
+      >
+        Create listing
+      </button>
+
+      <button
+        class="tool"
+        data-prompt="Give me a marketing plan for Shopper's Suggestions."
+      >
+        Marketing plan
+      </button>
+
+      <button
+        class="tool"
+        data-prompt="Explain what you can currently do as my AI Manager."
+      >
+        What can you do?
+      </button>
+
+    </div>
+
+
+    <div class="footer">
+      Shopper's Suggestions · AI Manager
+    </div>
+
+  </main>
+
+</div>
+
+
+<script>
+
+const messages =
+  document.getElementById("messages");
+
+const input =
+  document.getElementById("input");
+
+const send =
+  document.getElementById("send");
+
+
+/* =====================================================
+   ESCAPE HTML
+===================================================== */
+
+function escapeHTML(text) {
+
+  return String(text).replace(
+    /[&<>"']/g,
+
+    character => {
+
+      const map = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      };
+
+      return map[character];
+
+    }
+  );
+
+}
+
+
+/* =====================================================
+   TEXT / MARKDOWN RENDERER
+===================================================== */
+
+function renderMessage(raw) {
+
+  let text =
+    escapeHTML(raw);
+
+  const codeBlocks = [];
+
+
+  /*
+   * Triple-backtick code
+   */
+
+  text = text.replace(
+    /```(?:[\w-]+)?\n?([\s\S]*?)```/g,
+
+    (_, code) => {
+
+      codeBlocks.push(
+        '<pre class="code">' +
+        code.trim() +
+        '</pre>'
+      );
+
+      return "@@CODE" +
+        (codeBlocks.length - 1) +
+        "@@";
+
+    }
+  );
+
+
+  /*
+   * Bold
+   *
+   * **hellow**
+   */
+
+  text = text.replace(
+    /\*\*([^*]+)\*\*/g,
+    "<strong>$1</strong>"
+  );
+
+
+  /*
+   * Inline code
+   *
+   * `worker.js`
+   */
+
+  text = text.replace(
+    /`([^`]+)`/g,
+    "<code>$1</code>"
+  );
+
+
+  /*
+   * Headings
+   */
+
+  text = text.replace(
+    /^### (.+)$/gm,
+    "<strong>$1</strong>"
+  );
+
+  text = text.replace(
+    /^## (.+)$/gm,
+    "<strong>$1</strong>"
+  );
+
+  text = text.replace(
+    /^# (.+)$/gm,
+    "<strong>$1</strong>"
+  );
+
+
+  /*
+   * Lists
+   */
+
+  text = text.replace(
+    /^\s*[-*] (.+)$/gm,
+    "<li>$1</li>"
+  );
+
+  text = text.replace(
+    /(<li>.*<\/li>)/gs,
+    "<ul>$1</ul>"
+  );
+
+
+  /*
+   * New lines
+   */
+
+  text =
+    text.replace(/\n/g, "<br>");
+
+
+  /*
+   * Restore code blocks
+   */
+
+  codeBlocks.forEach(
+    (block, index) => {
+
+      text =
+        text.replace(
+          "@@CODE" + index + "@@",
+          block
+        );
+
+    }
+  );
+
+
+  return text;
+
+}
+
+
+/* =====================================================
+   ADD MESSAGE
+===================================================== */
+
+function addMessage(
+  role,
+  text
+) {
+
+  const row =
+    document.createElement("div");
+
+  row.className =
+    "row " + role;
+
+
+  const bubble =
+    document.createElement("div");
+
+  bubble.className =
+    "bubble";
+
+
+  bubble.innerHTML =
+    renderMessage(text);
+
+
+  row.appendChild(bubble);
+
+  messages.appendChild(row);
+
+
+  messages.scrollTop =
+    messages.scrollHeight;
+
+}
+
+
+/* =====================================================
+   THINKING ANIMATION
+===================================================== */
+
+function showThinking() {
+
+  const row =
+    document.createElement("div");
+
+  row.className =
+    "row assistant";
+
+  row.id =
+    "thinking";
+
+
+  row.innerHTML = `
+
+    <div class="bubble">
+
+      <div class="typing">
+
+        <i></i>
+        <i></i>
+        <i></i>
+
+        <span class="thinking">
+          Thinking…
+        </span>
+
+      </div>
+
+    </div>
+
+  `;
+
+
+  messages.appendChild(row);
+
+  messages.scrollTop =
+    messages.scrollHeight;
+
+}
+
+
+function removeThinking() {
+
+  const element =
+    document.getElementById(
+      "thinking"
+    );
+
+  if (element) {
+    element.remove();
+  }
+
+}
+
+
+/* =====================================================
+   TEXTAREA AUTO SIZE
+===================================================== */
+
+function resizeInput() {
+
+  input.style.height =
+    "auto";
+
+  input.style.height =
+    Math.min(
+      input.scrollHeight,
+      150
+    ) + "px";
+
+}
+
+
+/* =====================================================
+   SEND MESSAGE
+===================================================== */
+
+async function sendMessage(
+  customMessage = null
+) {
+
+  const text =
+    (
+      customMessage !== null
+        ? customMessage
+        : input.value
+    ).trim();
+
+
+  if (!text) {
+    return;
+  }
+
+
+  if (send.disabled) {
+    return;
+  }
+
+
+  input.value = "";
+
+  resizeInput();
+
+
+  /*
+   * Show user's message immediately
+   */
+
+  addMessage(
+    "user",
+    text
+  );
+
+
+  /*
+   * Thinking animation
+   */
+
+  showThinking();
+
+
+  send.disabled = true;
+
+
+  try {
+
+    const response =
+      await fetch(
+        "/api/ai/chat",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+              message: text
+            })
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    removeThinking();
+
+
+    if (
+      !response.ok ||
+      !data.ok
+    ) {
+
+      throw new Error(
+        data.error ||
+        "The AI Manager could not reply."
+      );
+
+    }
+
+
+    /*
+     * Animated assistant message
+     */
+
+    addMessage(
+      "assistant",
+      data.answer ||
+      "I received your message."
+    );
+
+
+  } catch (error) {
+
+    removeThinking();
+
+
+    addMessage(
+      "assistant",
+
+      "**Sorry — something went wrong.**\n\n`" +
+      error.message +
+      "`"
+    );
+
+  } finally {
+
+    send.disabled = false;
+
+    input.focus();
+
+  }
+
+}
+
+
+/* =====================================================
+   ENTER TO SEND
+===================================================== */
+
+input.addEventListener(
+  "keydown",
+
+  event => {
+
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
+
+      event.preventDefault();
+
+      sendMessage();
+
+    }
+
+  }
+);
+
+
+/* =====================================================
+   INPUT RESIZE
+===================================================== */
+
+input.addEventListener(
+  "input",
+  resizeInput
+);
+
+
+/* =====================================================
+   SEND BUTTON
+===================================================== */
+
+send.addEventListener(
+  "click",
+
+  () => {
+    sendMessage();
+  }
+);
+
+
+/* =====================================================
+   QUICK ACTIONS
+===================================================== */
+
+document
+  .querySelectorAll(
+    "[data-prompt]"
+  )
+  .forEach(button => {
+
+    button.addEventListener(
+      "click",
+
+      () => {
+
+        sendMessage(
+          button.dataset.prompt
+        );
+
+      }
+
+    );
+
+  });
+
+
+/* =====================================================
+   FIRST MESSAGE
+===================================================== */
+
+addMessage(
+  "assistant",
+
+  "**Hellow 👋**\n\n" +
+
+  "I’m your Shopper’s Suggestions AI Manager. " +
+
+  "Ask me to research a product, improve a listing, " +
+
+  "create marketing ideas, or plan what we should do next."
+);
+
+
+input.focus();
+
+</script>
+
+</body>
+</html>
