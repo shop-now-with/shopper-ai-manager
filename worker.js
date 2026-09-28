@@ -1058,3 +1058,941 @@ async function insertManagerDraft(
       result.meta?.last_row_id
   });
 }
+async function publishDraft(env, id) {
+  const draft = await env.DB.prepare(`
+    SELECT *
+    FROM manager_drafts
+    WHERE id=?
+    LIMIT 1
+  `)
+    .bind(id)
+    .first();
+
+  if (!draft) {
+    return json(
+      {
+        ok: false,
+        error: "Draft not found."
+      },
+      404
+    );
+  }
+
+  if (!draft.affiliate_url) {
+    return json(
+      {
+        ok: false,
+        error:
+          "This draft has no verified affiliate URL yet. Add and verify it before publishing."
+      },
+      400
+    );
+  }
+
+  let images = [];
+
+  try {
+    images = JSON.parse(
+      draft.image_urls || "[]"
+    );
+  } catch {
+    images = [];
+  }
+
+  while (images.length < 5) {
+    images.push("");
+  }
+
+  const now = nowISO();
+
+  const result =
+    await env.DB.prepare(`
+      INSERT INTO products
+      (
+        title,
+        description,
+        affiliate_url,
+        category,
+        image1_url,
+        image2_url,
+        image3_url,
+        image4_url,
+        image5_url,
+        published,
+        created_at,
+        updated_at,
+        video_url,
+        featured
+      )
+      VALUES(
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        1,
+        ?,
+        ?,
+        ?,
+        0
+      )
+    `)
+      .bind(
+        draft.title,
+        draft.description,
+        draft.affiliate_url,
+        draft.category,
+        images[0] || "",
+        images[1] || "",
+        images[2] || "",
+        images[3] || "",
+        images[4] || "",
+        now,
+        now,
+        draft.video_url || ""
+      )
+      .run();
+
+  await env.DB.prepare(`
+    UPDATE manager_drafts
+    SET status='published',
+        updated_at=?
+    WHERE id=?
+  `)
+    .bind(now, id)
+    .run();
+
+  await addLog(
+    env,
+    "info",
+    "Draft published",
+    {
+      draft_id: id,
+      product_id:
+        result.meta?.last_row_id
+    }
+  );
+
+  return json({
+    ok: true,
+    published: true,
+    product_id:
+      result.meta?.last_row_id
+  });
+}
+
+async function getTasks(env) {
+  const result =
+    await env.DB.prepare(`
+      SELECT *
+      FROM manager_tasks
+      ORDER BY id DESC
+      LIMIT 100
+    `).all();
+
+  return json({
+    ok: true,
+    tasks:
+      result.results || []
+  });
+}
+
+async function createTask(
+  request,
+  env
+) {
+  const body =
+    await readJson(request);
+
+  const now = nowISO();
+
+  const result =
+    await env.DB.prepare(`
+      INSERT INTO manager_tasks
+      (
+        type,
+        status,
+        data_json,
+        result_json,
+        created_at,
+        updated_at
+      )
+      VALUES(
+        ?,
+        'pending',
+        ?,
+        '{}',
+        ?,
+        ?
+      )
+    `)
+      .bind(
+        safeString(
+          body.type,
+          "general"
+        ),
+        JSON.stringify(
+          body.data || body
+        ),
+        now,
+        now
+      )
+      .run();
+
+  return json({
+    ok: true,
+    id:
+      result.meta?.last_row_id
+  });
+}
+
+async function getLogs(env) {
+  const result =
+    await env.DB.prepare(`
+      SELECT *
+      FROM manager_logs
+      ORDER BY id DESC
+      LIMIT 100
+    `).all();
+
+  return json({
+    ok: true,
+    logs:
+      result.results || []
+  });
+}
+
+async function addLog(
+  env,
+  level,
+  message,
+  data = {}
+) {
+  try {
+    await env.DB.prepare(`
+      INSERT INTO manager_logs
+      (
+        level,
+        message,
+        data_json,
+        created_at
+      )
+      VALUES(
+        ?,
+        ?,
+        ?,
+        ?
+      )
+    `)
+      .bind(
+        level,
+        message,
+        JSON.stringify(data),
+        nowISO()
+      )
+      .run();
+  } catch (error) {
+    console.error(
+      "Logging failed:",
+      error
+    );
+  }
+}
+
+async function integrations(env) {
+  return json({
+    ok: true,
+
+    website: {
+      connected:
+        !!env.WEBSITE_URL,
+      url:
+        env.WEBSITE_URL || ""
+    },
+
+    github: {
+      configured:
+        !!env.GITHUB_OWNER &&
+        !!env.GITHUB_REPO &&
+        !!env.GITHUB_BRANCH
+    },
+
+    instagram: {
+      connected: false,
+      message:
+        "Requires authorized Meta/Instagram integration."
+    },
+
+    affiliate: {
+      connected: false,
+      message:
+        "Requires authorized affiliate-platform integration."
+    },
+
+    ai: {
+      connected: !!env.AI,
+      model: MODEL
+    },
+
+    database: {
+      connected: !!env.DB
+    }
+  });
+}
+
+async function testGitHub(env) {
+  if (
+    !env.GITHUB_OWNER ||
+    !env.GITHUB_REPO
+  ) {
+    return json({
+      ok: false,
+      connected: false,
+      message:
+        "GITHUB_OWNER or GITHUB_REPO is missing."
+    });
+  }
+
+  if (!env.GITHUB_TOKEN) {
+    return json({
+      ok: false,
+      connected: false,
+      message:
+        "GITHUB_TOKEN secret is missing."
+    });
+  }
+
+  const response =
+    await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(
+        env.GITHUB_OWNER
+      )}/${encodeURIComponent(
+        env.GITHUB_REPO
+      )}`,
+      {
+        headers: {
+          Authorization:
+            `Bearer ${env.GITHUB_TOKEN}`,
+
+          Accept:
+            "application/vnd.github+json",
+
+          "X-GitHub-Api-Version":
+            "2022-11-28",
+
+          "User-Agent":
+            "shopper-ai-manager"
+        }
+      }
+    );
+
+  const data =
+    await response.json();
+
+  if (!response.ok) {
+    return json({
+      ok: false,
+      connected: false,
+      status:
+        response.status,
+      error:
+        data?.message ||
+        "GitHub request failed."
+    });
+  }
+
+  return json({
+    ok: true,
+    connected: true,
+    repository:
+      data.full_name,
+
+    private:
+      data.private,
+
+    default_branch:
+      data.default_branch
+  });
+}
+
+
+/* =========================================================
+   AI
+========================================================= */
+
+async function runAI(
+  env,
+  prompt,
+  options = {}
+) {
+  if (!env.AI) {
+    throw new Error(
+      "Workers AI binding AI is missing."
+    );
+  }
+
+  const result =
+    await env.AI.run(
+      MODEL,
+      {
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are the practical AI manager for Shopper's Suggestions. " +
+              "Never invent facts, URLs, prices, statistics, ratings, sales numbers " +
+              "or completed actions. Follow the requested output format exactly."
+          },
+
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+
+        max_tokens:
+          options.max_tokens || 1800,
+
+        temperature:
+          options.temperature ?? 0.6
+      }
+    );
+
+  return (
+    result?.response ||
+    result?.text ||
+    result?.output_text ||
+    result?.choices?.[0]?.message?.content ||
+    JSON.stringify(result)
+  );
+}
+
+
+/* =========================================================
+   MANAGER ENGINE
+========================================================= */
+
+function createRunId() {
+  return (
+    `run_${Date.now()}_` +
+    crypto
+      .randomUUID()
+      .slice(0, 8)
+  );
+}
+
+async function runManager(
+  request,
+  env,
+  ctx
+) {
+  if (!env.AI) {
+    return json(
+      {
+        ok: false,
+        error:
+          "Workers AI binding AI is missing."
+      },
+      500
+    );
+  }
+
+  const body =
+    await readJson(request);
+
+  const focus = safeString(
+    body.focus ||
+    body.query ||
+    body.topic,
+
+    "Find useful, practical product opportunities for Shopper's Suggestions."
+  );
+
+  const runId =
+    createRunId();
+
+  const now =
+    nowISO();
+
+  await env.DB.prepare(`
+    INSERT INTO manager_runs
+    (
+      id,
+      status,
+      stage,
+      message,
+      result_json,
+      started_at,
+      updated_at
+    )
+    VALUES(
+      ?,
+      'running',
+      'starting',
+      'Manager started',
+      '{}',
+      ?,
+      ?
+    )
+  `)
+    .bind(
+      runId,
+      now,
+      now
+    )
+    .run();
+
+  await addLog(
+    env,
+    "info",
+    "Manager run started",
+    {
+      run_id: runId,
+      focus
+    }
+  );
+
+  ctx.waitUntil(
+    executeManagerRun(
+      env,
+      runId,
+      focus
+    )
+  );
+
+  return json({
+    ok: true,
+    started: true,
+    run_id: runId,
+    message:
+      "Manager run started in the background."
+  });
+}
+
+async function executeManagerRun(
+  env,
+  runId,
+  focus
+) {
+  try {
+    await updateManagerRun(
+      env,
+      runId,
+      "discovering",
+      "Finding product opportunities..."
+    );
+
+    const opportunities =
+      await discoverProductOpportunities(
+        env,
+        focus
+      );
+
+    /*
+     * SAFETY NET:
+     * The manager must never finish with zero
+     * opportunities just because the model returned
+     * malformed JSON.
+     */
+
+    const usableOpportunities =
+      opportunities.length
+        ? opportunities
+        : [
+            {
+              title:
+                "Useful problem-solving tech product",
+
+              reason:
+                "A practical product opportunity that can be researched and verified before publishing.",
+
+              target_customer:
+                "Everyday shoppers",
+
+              problem:
+                "Solves a practical everyday problem.",
+
+              category:
+                "Tech"
+            }
+          ];
+
+    await updateManagerRun(
+      env,
+      runId,
+      "researching",
+      `Found ${usableOpportunities.length} product opportunities.`
+    );
+
+    const drafts = [];
+    const rejected = [];
+
+    for (
+      let i = 0;
+      i < usableOpportunities.length;
+      i++
+    ) {
+      const opportunity =
+        usableOpportunities[i];
+
+      await updateManagerRun(
+        env,
+        runId,
+        "researching",
+        `Researching opportunity ${
+          i + 1
+        } of ${
+          usableOpportunities.length
+        }...`
+      );
+
+      let researched;
+
+      try {
+        researched =
+          await researchManagerProduct(
+            env,
+            opportunity
+          );
+      } catch (error) {
+        /*
+         * If research AI fails, don't kill the
+         * entire manager run.
+         */
+
+        await addLog(
+          env,
+          "error",
+          "AI research failed; using opportunity fallback",
+          {
+            run_id: runId,
+            title:
+              opportunity.title,
+            error:
+              error?.message ||
+              String(error)
+          }
+        );
+
+        researched = {
+          title:
+            opportunity.title,
+
+          description:
+            opportunity.reason,
+
+          category:
+            normalizeCategory(
+              opportunity.category
+            ),
+
+          target_customer:
+            opportunity.target_customer,
+
+          problem_solved:
+            opportunity.problem,
+
+          selling_points: [],
+
+          verification_notes: [
+            "Research response could not be completed automatically.",
+            "Verify the exact product before publishing."
+          ],
+
+          affiliate_url: "",
+          image_urls: [],
+          video_url: ""
+        };
+      }
+
+      let duplicate = false;
+
+      try {
+        duplicate =
+          await isManagerDuplicate(
+            env,
+            researched.title ||
+              opportunity.title ||
+              ""
+          );
+      } catch (error) {
+        /*
+         * Duplicate-check failure should not
+         * destroy the manager run.
+         */
+
+        await addLog(
+          env,
+          "error",
+          "Duplicate check failed; continuing",
+          {
+            run_id: runId,
+            error:
+              error?.message ||
+              String(error)
+          }
+        );
+
+        duplicate = false;
+      }
+
+      if (duplicate) {
+        rejected.push({
+          title:
+            researched.title ||
+            opportunity.title,
+
+          reason:
+            "Possible duplicate"
+        });
+
+        continue;
+      }
+
+      await updateManagerRun(
+        env,
+        runId,
+        "creating_draft",
+        `Creating draft ${
+          drafts.length + 1
+        }...`
+      );
+
+      const draft =
+        await createManagerDraft(
+          env,
+          researched,
+          runId
+        );
+
+      drafts.push(draft);
+    }
+
+    await finishManagerRun(
+      env,
+      runId,
+      "completed",
+      "Manager cycle completed.",
+      {
+        opportunities:
+          usableOpportunities.length,
+
+        drafts_created:
+          drafts.length,
+
+        rejected,
+
+        drafts
+      }
+    );
+
+    await addLog(
+      env,
+      "info",
+      "Manager run completed",
+      {
+        run_id: runId,
+
+        opportunities:
+          usableOpportunities.length,
+
+        drafts_created:
+          drafts.length
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Manager run failed:",
+      error
+    );
+
+    await finishManagerRun(
+      env,
+      runId,
+      "failed",
+      error?.message ||
+        String(error),
+      {}
+    );
+
+    await addLog(
+      env,
+      "error",
+      "Manager run failed",
+      {
+        run_id: runId,
+
+        error:
+          error?.message ||
+          String(error)
+      }
+    );
+  }
+}
+
+
+/* =========================================================
+   DISCOVERY
+========================================================= */
+
+async function discoverProductOpportunities(
+  env,
+  focus
+) {
+  let raw = "";
+
+  try {
+    raw =
+      await runAI(
+        env,
+        `
+You are the product-discovery agent for Shopper's Suggestions.
+
+Find up to 5 useful product opportunities based on:
+
+${focus}
+
+Return ONLY valid JSON.
+Do not use markdown fences.
+
+{
+  "opportunities": [
+    {
+      "title": "product type",
+      "reason": "why this is useful",
+      "target_customer": "who may need it",
+      "problem": "problem it solves",
+      "category": "Tech"
+    }
+  ]
+}
+
+Allowed categories:
+${CATEGORIES.join(", ")}
+
+Rules:
+- Return product TYPES, not invented exact listings.
+- Do not invent prices.
+- Do not invent sales numbers.
+- Do not invent ratings.
+- Do not invent URLs.
+- Do not invent brands.
+- Do not invent trend statistics.
+- Prefer practical products with a clear problem.
+`,
+        {
+          max_tokens: 1600,
+          temperature: 0.5
+        }
+      );
+  } catch (error) {
+    await addLog(
+      env,
+      "error",
+      "Product discovery AI failed",
+      {
+        error:
+          error?.message ||
+          String(error)
+      }
+    );
+
+    return [
+      {
+        title:
+          "Useful problem-solving tech product",
+
+        reason:
+          "A practical product opportunity that can be researched and verified.",
+
+        target_customer:
+          "Everyday shoppers",
+
+        problem:
+          "Solves a practical everyday problem.",
+
+        category:
+          "Tech"
+      }
+    ];
+  }
+
+  const parsed =
+    parseJSONFromAI(raw);
+
+  let list =
+    Array.isArray(
+      parsed?.opportunities
+    )
+      ? parsed.opportunities
+      : [];
+
+  /*
+   * FALLBACK:
+   * Bad AI formatting can no longer
+   * produce zero opportunities.
+   */
+
+  if (!list.length) {
+    list = [
+      {
+        title:
+          "Useful problem-solving tech product",
+
+        reason:
+          "A practical product opportunity that can be researched and verified.",
+
+        target_customer:
+          "Everyday shoppers",
+
+        problem:
+          "Solves a practical everyday problem.",
+
+        category:
+          "Tech"
+      }
+    ];
+  }
+
+  return list
+    .slice(0, 5)
+    .map(item => ({
+      title:
+        safeString(
+          item?.title,
+          "Useful problem-solving tech product"
+        ),
+
+      reason:
+        safeString(
+          item?.reason,
+          "Practical product opportunity requiring verification."
+        ),
+
+      target_customer:
+        safeString(
+          item?.target_customer,
+          "Everyday shoppers"
+        ),
+
+      problem:
+        safeString(
+          item?.problem,
+          "Solves a practical everyday problem."
+        ),
+
+      category:
+        normalizeCategory(
+          item?.category ||
+          "Tech"
+        )
+    }))
+    .filter(
+      item =>
+        !!item.title
+    );
+}
