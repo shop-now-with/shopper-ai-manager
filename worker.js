@@ -1424,51 +1424,48 @@ async function testGitHub(env) {
    AI
 ========================================================= */
 
-async function runAI(
-  env,
-  prompt,
-  options = {}
-) {
-  if (!env.AI) {
-    throw new Error(
-      "Workers AI binding AI is missing."
-    );
-  }
+async function runAI(env,prompt) {
 
-  const result =
-    await env.AI.run(
+  if(!env.AI)
+    throw new Error("Workers AI binding AI is missing.");
+
+  try {
+
+    const result = await env.AI.run(
       MODEL,
       {
-        messages: [
+        messages:[
           {
-            role: "system",
+            role:"system",
             content:
-              "You are the practical AI manager for Shopper's Suggestions. " +
-              "Never invent facts, URLs, prices, statistics, ratings, sales numbers " +
-              "or completed actions. Follow the requested output format exactly."
+              "You are a practical AI manager for Shopper's Suggestions. Do not invent facts, URLs, prices, statistics, or completed actions."
           },
-
           {
-            role: "user",
-            content: prompt
+            role:"user",
+            content:prompt
           }
         ],
-
-        max_tokens:
-          options.max_tokens || 1800,
-
-        temperature:
-          options.temperature ?? 0.6
+        max_tokens:1400,
+        temperature:.7
+      },
+      {
+        rejectIfBusy:true
       }
     );
 
-  return (
-    result?.response ||
-    result?.text ||
-    result?.output_text ||
-    result?.choices?.[0]?.message?.content ||
-    JSON.stringify(result)
-  );
+    return result?.response ||
+      result?.text ||
+      result?.output_text ||
+      result?.choices?.[0]?.message?.content ||
+      JSON.stringify(result);
+
+  } catch(error) {
+
+    throw new Error(
+      `Workers AI error: ${error?.message || String(error)}`
+    );
+
+  }
 }
 
 
