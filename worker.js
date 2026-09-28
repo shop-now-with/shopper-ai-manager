@@ -1,7 +1,7 @@
 const MODEL = "@cf/google/gemma-4-26b-a4b-it";
 
 // Shopper's Suggestions AI Manager
-// Full Worker replacement.
+// Full Worker replacement - UPDATED.
 // Includes AI chat, research, drafts, manager runs, duplicate checks,
 // scheduled runs, dashboard, GitHub test and Manager UI.
 
