@@ -1792,3 +1792,1527 @@ async function runLegacyManagerStep(env,runId) {
     env
   );
 }
+/* =========================================================
+   FINAL MANAGER HELPERS
+========================================================= */
+
+async function updateManagerRun(
+  env,
+  runId,
+  stage,
+  message,
+  resultState=null
+) {
+  let resultJson="{}";
+
+  if(resultState!==null) {
+    resultJson=JSON.stringify(resultState);
+  } else {
+    const current=await env.DB.prepare(`
+      SELECT result_json
+      FROM manager_runs
+      WHERE id=?
+      LIMIT 1
+    `).bind(runId).first();
+
+    resultJson=current?.result_json||"{}";
+  }
+
+  await env.DB.prepare(`
+    UPDATE manager_runs
+    SET
+      stage=?,
+      message=?,
+      result_json=?,
+      updated_at=?
+    WHERE id=?
+      AND status='running'
+  `).bind(
+    stage,
+    message,
+    resultJson,
+    nowISO(),
+    runId
+  ).run();
+}
+
+async function finishManagerRun(
+  env,
+  runId,
+  status,
+  message,
+  result={}
+) {
+  const now=nowISO();
+
+  await env.DB.prepare(`
+    UPDATE manager_runs
+    SET
+      status=?,
+      stage=?,
+      message=?,
+      result_json=?,
+      updated_at=?,
+      finished_at=?
+    WHERE id=?
+  `).bind(
+    status,
+    status==="completed"
+      ? "completed"
+      : "failed",
+    message,
+    JSON.stringify(result||{}),
+    now,
+    now,
+    runId
+  ).run();
+}
+
+async function managerStatus(env) {
+  await env.DB.prepare(`
+    UPDATE manager_runs
+    SET
+      status='failed',
+      stage='failed',
+      message='Automatically stopped: stale Manager run.',
+      updated_at=?,
+      finished_at=?
+    WHERE status='running'
+      AND updated_at < datetime('now','-15 minutes')
+  `).bind(
+    nowISO(),
+    nowISO()
+  ).run();
+
+  const latest=await env.DB.prepare(`
+    SELECT *
+    FROM manager_runs
+    ORDER BY started_at DESC
+    LIMIT 1
+  `).first();
+
+  let result={};
+
+  try {
+    result=JSON.parse(
+      latest?.result_json||"{}"
+    );
+  } catch {
+    result={};
+  }
+
+  return json({
+    ok:true,
+    run:latest
+      ? {
+          ...latest,
+          result
+        }
+      : null
+  });
+}
+
+/*
+  Compatibility function for the scheduled Worker.
+
+  The old version attempted to execute the entire Manager
+  inside one long background operation. This version only
+  performs one bounded step.
+*/
+async function executeManagerRun(env,runId,focus) {
+  try {
+    const existing=await getManagerRun(
+      env,
+      runId
+    );
+
+    if(!existing)
+      return;
+
+    let state={};
+
+    try {
+      state=JSON.parse(
+        existing.result_json||"{}"
+      );
+    } catch {
+      state={
+        focus,
+        opportunities:[],
+        current_index:0,
+        drafts:[],
+        rejected:[],
+        discovery_done:false
+      };
+    }
+
+    if(!state.focus)
+      state.focus=focus;
+
+    await managerStep(
+      new Request(
+        "https://internal/api/manager/step",
+        {
+          method:"POST",
+          headers:{
+            "content-type":"application/json"
+          },
+          body:JSON.stringify({
+            run_id:runId
+          })
+        }
+      ),
+      env
+    );
+
+  } catch(error) {
+    console.error(
+      "Scheduled manager step failed:",
+      error
+    );
+
+    await finishManagerRun(
+      env,
+      runId,
+      "failed",
+      error?.message||String(error),
+      {}
+    );
+  }
+}
+
+async function runScheduledManager(env) {
+  try {
+    await cleanExpiredChat(env);
+
+    /*
+      Reset tasks that were abandoned for more than
+      two hours.
+    */
+    await env.DB.prepare(`
+      UPDATE manager_tasks
+      SET
+        status='pending',
+        updated_at=?
+      WHERE status='running'
+        AND updated_at < datetime('now','-2 hours')
+    `).bind(
+      nowISO()
+    ).run();
+
+    /*
+      Clean stale Manager runs.
+    */
+    await env.DB.prepare(`
+      UPDATE manager_runs
+      SET
+        status='failed',
+        stage='failed',
+        message='Automatically stopped: stale scheduled Manager run.',
+        updated_at=?,
+        finished_at=?
+      WHERE status='running'
+        AND updated_at < datetime('now','-15 minutes')
+    `).bind(
+      nowISO(),
+      nowISO()
+    ).run();
+
+    const active=await env.DB.prepare(`
+      SELECT id
+      FROM manager_runs
+      WHERE status='running'
+      ORDER BY started_at DESC
+      LIMIT 1
+    `).first();
+
+    if(active) {
+      await addLog(
+        env,
+        "info",
+        "Scheduled Manager skipped because a run is already active.",
+        {
+          run_id:active.id
+        }
+      );
+
+      return;
+    }
+
+    if(!env.AI)
+      return;
+
+    const runId=createRunId();
+    const now=nowISO();
+
+    const state={
+      focus:
+        "Find useful, practical product opportunities for Shopper's Suggestions.",
+      opportunities:[],
+      current_index:0,
+      drafts:[],
+      rejected:[],
+      discovery_done:false,
+      scheduled:true
+    };
+
+    await env.DB.prepare(`
+      INSERT INTO manager_runs
+      (
+        id,
+        status,
+        stage,
+        message,
+        result_json,
+        started_at,
+        updated_at
+      )
+      VALUES(
+        ?,
+        'running',
+        'discovering',
+        'Scheduled Manager cycle started.',
+        ?,
+        ?,
+        ?
+      )
+    `).bind(
+      runId,
+      JSON.stringify(state),
+      now,
+      now
+    ).run();
+
+    await addLog(
+      env,
+      "info",
+      "Scheduled Manager run created",
+      {
+        run_id:runId
+      }
+    );
+
+    /*
+      Cron performs one bounded step.
+      The dashboard can continue the run.
+    */
+    await executeManagerRun(
+      env,
+      runId,
+      state.focus
+    );
+
+  } catch(error) {
+    console.error(
+      "Scheduled Manager error:",
+      error
+    );
+
+    await addLog(
+      env,
+      "error",
+      "Scheduled Manager failed",
+      {
+        error:error?.message||String(error)
+      }
+    );
+  }
+}
+
+/* =========================================================
+   MANAGER PAGE
+========================================================= */
+
+function managerPage() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+
+<title>Shopper's Suggestions · AI Manager</title>
+
+<style>
+:root{
+  --bg:#f5f7fb;
+  --card:rgba(255,255,255,.84);
+  --ink:#111827;
+  --muted:#6b7280;
+  --line:#e5e7eb;
+  --orange:#ff7a00;
+  --blue:#1557a6;
+  --green:#16a34a;
+}
+
+*{
+  box-sizing:border-box;
+}
+
+body{
+  margin:0;
+  font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  color:var(--ink);
+  background:
+    radial-gradient(
+      circle at 10% 0%,
+      rgba(255,122,0,.16),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 90% 100%,
+      rgba(21,87,166,.15),
+      transparent 30%
+    ),
+    var(--bg);
+  min-height:100vh;
+}
+
+header{
+  position:sticky;
+  top:0;
+  z-index:10;
+  backdrop-filter:blur(20px);
+  background:rgba(255,255,255,.78);
+  border-bottom:1px solid var(--line);
+  padding:14px 18px;
+}
+
+.header-inner{
+  max-width:1250px;
+  margin:auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+}
+
+.brand-wrap{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.logo{
+  width:42px;
+  height:42px;
+  object-fit:contain;
+  border-radius:12px;
+  background:#fff;
+}
+
+.brand{
+  font-weight:850;
+  font-size:18px;
+}
+
+.sub{
+  font-size:11px;
+  color:var(--muted);
+}
+
+.status-dot{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  font-size:12px;
+  color:var(--green);
+}
+
+.dot{
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 0 5px rgba(22,163,74,.1);
+}
+
+main{
+  max-width:1250px;
+  margin:auto;
+  padding:24px 16px 70px;
+}
+
+.hero{
+  border:1px solid var(--line);
+  border-radius:28px;
+  padding:25px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255,255,255,.94),
+      rgba(255,255,255,.62)
+    );
+  box-shadow:0 18px 55px rgba(0,0,0,.07);
+  margin-bottom:16px;
+}
+
+.hero h1{
+  font-size:clamp(30px,6vw,52px);
+  margin:0 0 8px;
+  letter-spacing:-2px;
+}
+
+.hero p{
+  color:var(--muted);
+  max-width:760px;
+  line-height:1.55;
+}
+
+.actions{
+  display:flex;
+  gap:9px;
+  flex-wrap:wrap;
+}
+
+button{
+  border:0;
+  border-radius:13px;
+  padding:11px 15px;
+  font-weight:750;
+  cursor:pointer;
+  background:#111827;
+  color:#fff;
+  min-height:44px;
+}
+
+button.secondary{
+  background:#eef1f5;
+  color:#111827;
+}
+
+button.orange{
+  background:
+    linear-gradient(
+      135deg,
+      var(--orange),
+      #ff9f43
+    );
+}
+
+button:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:
+    repeat(auto-fit,minmax(280px,1fr));
+  gap:15px;
+}
+
+.wide{
+  grid-column:1/-1;
+}
+
+.card{
+  background:var(--card);
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:19px;
+  box-shadow:0 12px 42px rgba(0,0,0,.055);
+  backdrop-filter:blur(16px);
+}
+
+.card h2{
+  margin:0 0 5px;
+}
+
+.small{
+  font-size:12px;
+  color:var(--muted);
+}
+
+.stats{
+  display:grid;
+  grid-template-columns:
+    repeat(5,1fr);
+  gap:10px;
+  margin-top:15px;
+}
+
+.stat{
+  padding:15px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:rgba(255,255,255,.58);
+}
+
+.stat b{
+  display:block;
+  font-size:27px;
+  margin-top:5px;
+}
+
+textarea,
+input{
+  width:100%;
+  border:1px solid #d9dde5;
+  border-radius:13px;
+  padding:12px 13px;
+  font:inherit;
+  outline:none;
+  background:rgba(255,255,255,.8);
+  margin-top:9px;
+}
+
+textarea{
+  min-height:120px;
+  resize:vertical;
+}
+
+.chat{
+  height:390px;
+  overflow:auto;
+  display:flex;
+  flex-direction:column;
+  gap:9px;
+}
+
+.msg{
+  padding:11px 13px;
+  border-radius:15px;
+  max-width:90%;
+  white-space:pre-wrap;
+  line-height:1.5;
+}
+
+.msg.user{
+  align-self:flex-end;
+  background:#111827;
+  color:#fff;
+}
+
+.msg.assistant{
+  align-self:flex-start;
+  background:#eef1f5;
+}
+
+pre{
+  white-space:pre-wrap;
+  word-break:break-word;
+  line-height:1.5;
+  font:
+    13px/1.55
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+
+.run{
+  border-left:4px solid var(--orange);
+}
+
+.pill{
+  display:inline-block;
+  padding:5px 9px;
+  border-radius:999px;
+  background:#eef1f5;
+  font-size:11px;
+  font-weight:750;
+}
+
+.pill.good{
+  background:#dcfce7;
+  color:#166534;
+}
+
+.pill.warn{
+  background:#ffedd5;
+  color:#9a3412;
+}
+
+@media(max-width:760px){
+  .stats{
+    grid-template-columns:repeat(2,1fr);
+  }
+
+  .stats .stat:last-child{
+    grid-column:1/-1;
+  }
+
+  .hero{
+    padding:20px;
+  }
+
+  .brand{
+    font-size:15px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+<div class="header-inner">
+
+<div class="brand-wrap">
+
+<img
+  class="logo"
+  src="https://raw.githubusercontent.com/shop-now-with/Shopper-s-suggestions/main/2E7A6582-42BB-48D4-84D8-71C3DA3ED841.jpeg"
+  alt="Shopper's Suggestions"
+>
+
+<div>
+<div class="brand">
+Shopper's Suggestions
+</div>
+
+<div class="sub">
+AI Manager Control Center
+</div>
+</div>
+
+</div>
+
+<div class="status-dot">
+<span class="dot"></span>
+Online
+</div>
+
+</div>
+</header>
+
+<main>
+
+<section class="hero">
+
+<div class="small">
+AUTONOMOUS RESEARCH ENGINE
+</div>
+
+<h1>
+Find. Research. Draft.
+</h1>
+
+<p>
+The Manager discovers product opportunities,
+researches them with AI, checks for duplicates
+and creates research drafts. Publishing remains
+a verification step.
+</p>
+
+<div class="actions">
+
+<button
+  class="orange"
+  id="runManager"
+>
+▶ Run Manager
+</button>
+
+<button
+  class="secondary"
+  id="refresh"
+>
+↻ Refresh
+</button>
+
+</div>
+
+</section>
+
+<div class="grid">
+
+<section class="card wide">
+
+<h2>
+Live Manager Status
+</h2>
+
+<div class="small">
+Latest manager cycle and current stage.
+</div>
+
+<div
+  id="runStatus"
+  class="run"
+  style="
+    margin-top:13px;
+    padding:15px;
+    border-radius:16px;
+    background:rgba(255,255,255,.55)
+  "
+>
+Loading...
+</div>
+
+</section>
+
+<section class="card wide">
+
+<h2>
+Dashboard
+</h2>
+
+<div class="stats">
+
+<div class="stat">
+<span class="small">Products</span>
+<b id="products">—</b>
+</div>
+
+<div class="stat">
+<span class="small">Published</span>
+<b id="published">—</b>
+</div>
+
+<div class="stat">
+<span class="small">Drafts</span>
+<b id="drafts">—</b>
+</div>
+
+<div class="stat">
+<span class="small">Active Tasks</span>
+<b id="tasks">—</b>
+</div>
+
+<div class="stat">
+<span class="small">Logs</span>
+<b id="logs">—</b>
+</div>
+
+</div>
+
+</section>
+
+<section class="card">
+
+<h2>
+AI Chat
+</h2>
+
+<div class="small">
+Ask the Manager for ideas, research or strategy.
+</div>
+
+<div
+  id="chat"
+  class="chat"
+  style="margin-top:12px"
+></div>
+
+<textarea
+  id="message"
+  placeholder="e.g. Find useful products for students and creators..."
+></textarea>
+
+<div class="actions">
+
+<button id="send">
+Send
+</button>
+
+<button
+  id="reset"
+  class="secondary"
+>
+Reset Chat
+</button>
+
+</div>
+
+</section>
+
+<section class="card">
+
+<h2>
+Product Research
+</h2>
+
+<div class="small">
+Manual research tool.
+</div>
+
+<input
+  id="researchInput"
+  placeholder="Product or niche"
+>
+
+<button id="research">
+Research
+</button>
+
+<pre id="researchResult"></pre>
+
+</section>
+
+<section class="card">
+
+<h2>
+Marketing
+</h2>
+
+<input
+  id="marketingTitle"
+  placeholder="Product title"
+>
+
+<textarea
+  id="marketingDescription"
+  placeholder="Product description"
+></textarea>
+
+<button id="marketing">
+Generate Marketing
+</button>
+
+<pre id="marketingResult"></pre>
+
+</section>
+
+<section class="card">
+
+<h2>
+GitHub
+</h2>
+
+<div class="small">
+Checks the configured media repository connection.
+</div>
+
+<button id="github">
+Test GitHub
+</button>
+
+<pre id="integrationResult"></pre>
+
+</section>
+
+<section class="card wide">
+
+<h2>
+Manager Rules
+</h2>
+
+<div class="small">
+AI-generated drafts are research candidates only.
+Affiliate URLs, product identity, media rights,
+prices, availability and claims must be verified
+before publishing.
+</div>
+
+</section>
+
+</div>
+</main>
+
+<script>
+
+const $=id=>
+  document.getElementById(id);
+
+async function api(url,options={}){
+
+  const response=await fetch(
+    url,
+    {
+      headers:{
+        "Content-Type":"application/json",
+        ...(options.headers||{})
+      },
+      ...options
+    }
+  );
+
+  const data=await response.json();
+
+  if(!response.ok)
+    throw new Error(
+      data.error||
+      "Request failed"
+    );
+
+  return data;
+}
+
+function escapeHtml(value){
+
+  return String(
+    value??""
+  ).replace(
+    /[&<>"']/g,
+    c=>({
+      "&":"&amp;",
+      "<":"&lt;",
+      ">":"&gt;",
+      '"':"&quot;",
+      "'":"&#39;"
+    }[c])
+  );
+}
+
+async function loadDashboard(){
+
+  try{
+
+    const d=
+      await api(
+        "/api/dashboard"
+      );
+
+    $("products").textContent=
+      d.products;
+
+    $("published").textContent=
+      d.published_products;
+
+    $("drafts").textContent=
+      d.drafts;
+
+    $("tasks").textContent=
+      d.active_tasks;
+
+    $("logs").textContent=
+      d.logs;
+
+    renderRun(
+      d.latest_run
+    );
+
+  }catch(error){
+
+    $("runStatus").textContent=
+      error.message;
+  }
+}
+
+async function loadRunStatus(){
+
+  try{
+
+    const d=
+      await api(
+        "/api/manager/status"
+      );
+
+    renderRun(
+      d.run
+    );
+
+    return d;
+
+  }catch(error){
+
+    $("runStatus").textContent=
+      error.message;
+
+    return null;
+  }
+}
+
+function renderRun(run){
+
+  if(!run){
+
+    $("runStatus").innerHTML=
+      "<span class='pill'>No manager run yet</span>";
+
+    return;
+  }
+
+  let result={};
+
+  try{
+
+    result=
+      typeof run.result==="object"
+        ? run.result
+        : JSON.parse(
+            run.result_json||"{}"
+          );
+
+  }catch{
+    result={};
+  }
+
+  const statusClass=
+    run.status==="completed"
+      ? "good"
+      : run.status==="failed"
+        ? "warn"
+        : "";
+
+  $("runStatus").innerHTML=
+
+    "<div style='display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap'>"+
+
+      "<strong>"+
+      escapeHtml(
+        run.message||
+        "Manager run"
+      )+
+      "</strong>"+
+
+      "<span class='pill "+
+      statusClass+
+      "'>"+
+      escapeHtml(
+        run.status
+      )+
+      "</span>"+
+
+    "</div>"+
+
+    "<div class='small' style='margin-top:7px'>"+
+    "Stage: "+
+    escapeHtml(
+      run.stage||"—"
+    )+
+    " · Started: "+
+    escapeHtml(
+      run.started_at||"—"
+    )+
+    "</div>"+
+
+    (
+      Object.keys(result).length
+      ?
+      "<pre>"+
+      escapeHtml(
+        JSON.stringify(
+          result,
+          null,
+          2
+        )
+      )+
+      "</pre>"
+      :
+      ""
+    );
+}
+
+/*
+  IMPORTANT FIX:
+
+  After creating the Manager run,
+  repeatedly call /api/manager/step.
+
+  The previous version only called
+  /api/manager/status, which could never
+  advance the Manager.
+*/
+
+let managerPolling=false;
+
+async function runManager(){
+
+  if(managerPolling)
+    return;
+
+  $("runManager").disabled=true;
+  $("runManager").textContent=
+    "Starting...";
+
+  try{
+
+    const d=
+      await api(
+        "/api/manager/run",
+        {
+          method:"POST",
+          body:JSON.stringify({})
+        }
+      );
+
+    renderRun({
+      status:"running",
+      stage:"starting",
+      message:d.message,
+      started_at:
+        new Date().toISOString(),
+      result_json:"{}"
+    });
+
+    managerPolling=true;
+
+    await pumpManager(
+      d.run_id
+    );
+
+  }catch(error){
+
+    alert(
+      error.message
+    );
+
+  }finally{
+
+    managerPolling=false;
+
+    $("runManager").disabled=false;
+
+    $("runManager").textContent=
+      "▶ Run Manager";
+  }
+}
+
+async function pumpManager(runId){
+
+  while(true){
+
+    try{
+
+      const d=
+        await api(
+          "/api/manager/step",
+          {
+            method:"POST",
+            body:JSON.stringify({
+              run_id:runId
+            })
+          }
+        );
+
+      if(d.run)
+        renderRun(
+          d.run
+        );
+
+      await loadDashboard();
+
+      if(
+        d.done ||
+        d.run?.status==="completed" ||
+        d.run?.status==="failed"
+      ){
+        break;
+      }
+
+      /*
+        Give Cloudflare a short gap
+        between AI operations.
+      */
+
+      await new Promise(
+        resolve=>
+          setTimeout(
+            resolve,
+            1500
+          )
+      );
+
+    }catch(error){
+
+      /*
+        If the request fails,
+        refresh status once.
+
+        This prevents a temporary
+        network error from creating
+        another Manager run.
+      */
+
+      const status=
+        await loadRunStatus();
+
+      if(
+        status?.run?.status!=="running"
+      ){
+        break;
+      }
+
+      await new Promise(
+        resolve=>
+          setTimeout(
+            resolve,
+            2500
+          )
+      );
+    }
+  }
+
+  await loadDashboard();
+  await loadRunStatus();
+}
+
+function addMessage(
+  role,
+  content
+){
+
+  const div=
+    document.createElement(
+      "div"
+    );
+
+  div.className=
+    "msg "+
+    (
+      role==="user"
+        ? "user"
+        : "assistant"
+    );
+
+  div.textContent=
+    content;
+
+  $("chat")
+    .appendChild(div);
+
+  $("chat").scrollTop=
+    $("chat").scrollHeight;
+}
+
+async function sendMessage(){
+
+  const input=
+    $("message");
+
+  const message=
+    input.value.trim();
+
+  if(!message)
+    return;
+
+  input.value="";
+
+  addMessage(
+    "user",
+    message
+  );
+
+  try{
+
+    const d=
+      await api(
+        "/api/ai/chat",
+        {
+          method:"POST",
+          body:JSON.stringify({
+            message
+          })
+        }
+      );
+
+    addMessage(
+      "assistant",
+      d.answer
+    );
+
+  }catch(error){
+
+    addMessage(
+      "assistant",
+      "Error: "+
+      error.message
+    );
+  }
+}
+
+async function resetChat(){
+
+  try{
+
+    await api(
+      "/api/ai/chat/reset",
+      {
+        method:"POST"
+      }
+    );
+
+    $("chat").innerHTML="";
+
+    addMessage(
+      "assistant",
+      "Chat reset."
+    );
+
+  }catch(error){
+
+    addMessage(
+      "assistant",
+      "Error: "+
+      error.message
+    );
+  }
+}
+
+async function doResearch(){
+
+  const query=
+    $("researchInput")
+      .value
+      .trim();
+
+  if(!query)
+    return;
+
+  $("researchResult").textContent=
+    "Researching...";
+
+  try{
+
+    const d=
+      await api(
+        "/api/research",
+        {
+          method:"POST",
+          body:JSON.stringify({
+            query
+          })
+        }
+      );
+
+    $("researchResult").textContent=
+      d.result;
+
+  }catch(error){
+
+    $("researchResult").textContent=
+      error.message;
+  }
+}
+
+async function doMarketing(){
+
+  $("marketingResult")
+    .textContent=
+    "Generating...";
+
+  try{
+
+    const d=
+      await api(
+        "/api/marketing",
+        {
+          method:"POST",
+          body:JSON.stringify({
+
+            title:
+              $("marketingTitle")
+                .value
+                .trim(),
+
+            description:
+              $("marketingDescription")
+                .value
+                .trim(),
+
+            platform:
+              "Instagram"
+
+          })
+        }
+      );
+
+    $("marketingResult")
+      .textContent=
+      d.result;
+
+  }catch(error){
+
+    $("marketingResult")
+      .textContent=
+      error.message;
+  }
+}
+
+async function testGitHub(){
+
+  $("integrationResult")
+    .textContent=
+    "Testing...";
+
+  try{
+
+    const d=
+      await api(
+        "/api/integrations/github/test"
+      );
+
+    $("integrationResult")
+      .textContent=
+      JSON.stringify(
+        d,
+        null,
+        2
+      );
+
+  }catch(error){
+
+    $("integrationResult")
+      .textContent=
+      error.message;
+  }
+}
+
+$("runManager")
+  .addEventListener(
+    "click",
+    runManager
+  );
+
+$("refresh")
+  .addEventListener(
+    "click",
+    ()=>{
+      loadDashboard();
+      loadRunStatus();
+    }
+  );
+
+$("send")
+  .addEventListener(
+    "click",
+    sendMessage
+  );
+
+$("reset")
+  .addEventListener(
+    "click",
+    resetChat
+  );
+
+$("research")
+  .addEventListener(
+    "click",
+    doResearch
+  );
+
+$("marketing")
+  .addEventListener(
+    "click",
+    doMarketing
+  );
+
+$("github")
+  .addEventListener(
+    "click",
+    testGitHub
+  );
+
+$("message")
+  .addEventListener(
+    "keydown",
+    event=>{
+      if(
+        event.key==="Enter" &&
+        !event.shiftKey
+      ){
+        event.preventDefault();
+        sendMessage();
+      }
+    }
+  );
+
+loadDashboard();
+
+addMessage(
+  "assistant",
+  "Shopper's Suggestions AI Manager is online. Run the Manager when you're ready."
+);
+
+setInterval(
+  loadRunStatus,
+  5000
+);
+
+</script>
+
+</body>
+</html>`;
+}
