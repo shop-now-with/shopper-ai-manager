@@ -796,3 +796,999 @@ async function insertManagerDraft(env,data) {
     draft_id:result.meta?.last_row_id||null
   });
 }
+    AND lower(title) LIKE ?
+    LIMIT 10
+  `).bind(`%${words.slice(0,3).join("%")}%`).all();
+
+  return (drafts.results||[]).length > 0;
+}
+
+async function createManagerDraft(env,research,runId) {
+  const now=nowISO();
+
+  const verificationNotes=Array.isArray(research.verification_notes)
+    ? research.verification_notes
+    : [];
+
+  const sellingPoints=Array.isArray(research.selling_points)
+    ? research.selling_points
+    : [];
+
+  const descriptionParts=[];
+
+  if(research.description)
+    descriptionParts.push(research.description);
+
+  if(research.target_customer)
+    descriptionParts.push(
+      `Target customer: ${research.target_customer}`
+    );
+
+  if(research.problem_solved)
+    descriptionParts.push(
+      `Problem addressed: ${research.problem_solved}`
+    );
+
+  if(sellingPoints.length)
+    descriptionParts.push(
+      `Selling points:\n${sellingPoints.map(x=>`• ${x}`).join("\n")}`
+    );
+
+  if(verificationNotes.length)
+    descriptionParts.push(
+      `Verification needed before publishing:\n${verificationNotes.map(x=>`• ${x}`).join("\n")}`
+    );
+
+  const result=await env.DB.prepare(`
+    INSERT INTO manager_drafts
+    (
+      title,
+      description,
+      affiliate_url,
+      category,
+      image_urls,
+      video_url,
+      status,
+      created_at,
+      updated_at
+    )
+    VALUES(
+      ?,?,
+      '',
+      ?,
+      '[]',
+      '',
+      'draft',
+      ?,?
+    )
+  `).bind(
+    safeString(research.title),
+    descriptionParts.join("\n\n"),
+    normalizeCategory(research.category),
+    now,
+    now
+  ).run();
+
+  const draftId=result.meta?.last_row_id||null;
+
+  await addLog(
+    env,
+    "info",
+    "Manager draft created",
+    {
+      run_id:runId,
+      draft_id:draftId,
+      title:research.title
+    }
+  );
+
+  return {
+    id:draftId,
+    title:research.title,
+    category:normalizeCategory(research.category),
+    status:"draft"
+  };
+}
+
+/* =========================================================
+   NEW BOUNDED MANAGER ENGINE
+
+   The old engine used one long ctx.waitUntil() chain.
+   This version performs ONE bounded operation per /step request.
+   That prevents long Manager runs from getting stuck.
+========================================================= */
+
+async function runManager(request,env,ctx) {
+  if(!env.AI)
+    return json({
+      ok:false,
+      error:"Workers AI binding AI is missing."
+    },500);
+
+  // Stop genuinely stale runs.
+  await env.DB.prepare(`
+    UPDATE manager_runs
+    SET
+      status='failed',
+      stage='failed',
+      message='Automatically stopped: stale Manager run.',
+      finished_at=?,
+      updated_at=?
+    WHERE status='running'
+      AND updated_at < datetime('now','-15 minutes')
+  `).bind(
+    nowISO(),
+    nowISO()
+  ).run();
+
+  // Prevent two active Manager runs.
+  const active=await env.DB.prepare(`
+    SELECT id
+    FROM manager_runs
+    WHERE status='running'
+    ORDER BY started_at DESC
+    LIMIT 1
+  `).first();
+
+  if(active)
+    return json({
+      ok:false,
+      error:"A Manager run is already active.",
+      run_id:active.id
+    },409);
+
+  const body=await readJson(request);
+
+  const focus=safeString(
+    body.focus ||
+    body.query ||
+    body.topic,
+
+    "Find useful product opportunities for Shopper's Suggestions."
+  );
+
+  const runId=createRunId();
+  const now=nowISO();
+
+  const state={
+    focus,
+    opportunities:[],
+    current_index:0,
+    drafts:[],
+    rejected:[],
+    discovery_done:false
+  };
+
+  await env.DB.prepare(`
+    INSERT INTO manager_runs
+    (
+      id,
+      status,
+      stage,
+      message,
+      result_json,
+      started_at,
+      updated_at
+    )
+    VALUES(
+      ?,
+      'running',
+      'discovering',
+      'Starting Manager...',
+      ?,
+      ?,
+      ?
+    )
+  `).bind(
+    runId,
+    JSON.stringify(state),
+    now,
+    now
+  ).run();
+
+  await addLog(
+    env,
+    "info",
+    "Manager run created",
+    {
+      run_id:runId,
+      focus
+    }
+  );
+
+  /*
+    IMPORTANT:
+
+    We intentionally DO NOT use:
+
+      ctx.waitUntil(executeManagerRun(...))
+
+    here.
+
+    The browser will call /api/manager/step repeatedly.
+  */
+
+  return json({
+    ok:true,
+    started:true,
+    run_id:runId,
+    message:"Manager started."
+  });
+}
+
+async function managerStep(request,env) {
+  if(!env.AI)
+    return json({
+      ok:false,
+      error:"Workers AI binding AI is missing."
+    },500);
+
+  const body=await readJson(request);
+
+  const requestedRunId=safeString(
+    body.run_id ||
+    body.runId
+  );
+
+  let run=null;
+
+  if(requestedRunId) {
+    run=await env.DB.prepare(`
+      SELECT *
+      FROM manager_runs
+      WHERE id=?
+      LIMIT 1
+    `).bind(
+      requestedRunId
+    ).first();
+  } else {
+    run=await env.DB.prepare(`
+      SELECT *
+      FROM manager_runs
+      WHERE status='running'
+      ORDER BY started_at DESC
+      LIMIT 1
+    `).first();
+  }
+
+  if(!run)
+    return json({
+      ok:false,
+      error:"No active Manager run found."
+    },404);
+
+  if(run.status!=="running") {
+    return json({
+      ok:true,
+      done:true,
+      run
+    });
+  }
+
+  /*
+    Recover runs that were left running for too long.
+  */
+  const age=Date.now()-new Date(
+    run.updated_at
+  ).getTime();
+
+  if(Number.isFinite(age) && age>15*60*1000) {
+    await finishManagerRun(
+      env,
+      run.id,
+      "failed",
+      "Manager run timed out and was safely stopped.",
+      {}
+    );
+
+    const stopped=await getManagerRun(
+      env,
+      run.id
+    );
+
+    return json({
+      ok:true,
+      done:true,
+      run:stopped
+    });
+  }
+
+  let state={};
+
+  try {
+    state=JSON.parse(
+      run.result_json||"{}"
+    );
+  } catch {
+    state={};
+  }
+
+  /*
+    STEP 1:
+    Discover opportunities.
+
+    Only ONE AI call happens in this request.
+  */
+  if(run.stage==="discovering") {
+    try {
+      await updateManagerRun(
+        env,
+        run.id,
+        "discovering",
+        "Finding product opportunities..."
+      );
+
+      const opportunities=
+        await discoverProductOpportunities(
+          env,
+          state.focus ||
+          "Find useful product opportunities for Shopper's Suggestions."
+        );
+
+      state.opportunities=opportunities;
+      state.current_index=0;
+      state.drafts=[];
+      state.rejected=[];
+      state.discovery_done=true;
+
+      if(!opportunities.length) {
+        await finishManagerRun(
+          env,
+          run.id,
+          "completed",
+          "No usable opportunities were returned.",
+          state
+        );
+
+        const finished=await getManagerRun(
+          env,
+          run.id
+        );
+
+        return json({
+          ok:true,
+          done:true,
+          run:finished
+        });
+      }
+
+      await updateManagerRun(
+        env,
+        run.id,
+        "researching",
+        `Found ${opportunities.length} opportunities. Researching 1 of ${opportunities.length}...`,
+        state
+      );
+
+      const updated=await getManagerRun(
+        env,
+        run.id
+      );
+
+      return json({
+        ok:true,
+        done:false,
+        run:updated
+      });
+
+    } catch(error) {
+      console.error(
+        "Manager discovery failed:",
+        error
+      );
+
+      await finishManagerRun(
+        env,
+        run.id,
+        "failed",
+        error?.message||String(error),
+        state
+      );
+
+      const failed=await getManagerRun(
+        env,
+        run.id
+      );
+
+      return json({
+        ok:true,
+        done:true,
+        run:failed
+      });
+    }
+  }
+
+  /*
+    STEP 2:
+    Research ONE opportunity.
+
+    We deliberately process only one product per request.
+  */
+  if(run.stage==="researching") {
+    const opportunities=
+      Array.isArray(state.opportunities)
+        ? state.opportunities
+        : [];
+
+    const index=Number.isInteger(
+      Number(state.current_index)
+    )
+      ? Number(state.current_index)
+      : 0;
+
+    if(index>=opportunities.length) {
+      await finishManagerRun(
+        env,
+        run.id,
+        "completed",
+        "Manager cycle completed.",
+        state
+      );
+
+      const finished=await getManagerRun(
+        env,
+        run.id
+      );
+
+      return json({
+        ok:true,
+        done:true,
+        run:finished
+      });
+    }
+
+    const opportunity=opportunities[index];
+
+    try {
+      await updateManagerRun(
+        env,
+        run.id,
+        "researching",
+        `Researching opportunity ${index+1} of ${opportunities.length}...`,
+        state
+      );
+
+      let researched;
+
+      try {
+        researched=
+          await researchManagerProduct(
+            env,
+            opportunity
+          );
+      } catch(researchError) {
+        /*
+          Do not kill the entire Manager because
+          one AI research request failed.
+
+          Create a safe fallback research object.
+        */
+        console.error(
+          "Research step failed:",
+          researchError
+        );
+
+        researched={
+          title:safeString(
+            opportunity.title,
+            "Untitled product opportunity"
+          ),
+
+          description:safeString(
+            opportunity.reason,
+            "Product opportunity requires further verification."
+          ),
+
+          category:normalizeCategory(
+            opportunity.category
+          ),
+
+          target_customer:safeString(
+            opportunity.target_customer
+          ),
+
+          problem_solved:safeString(
+            opportunity.problem
+          ),
+
+          selling_points:[],
+
+          verification_notes:[
+            "Research request failed.",
+            "Verify product information manually before publishing."
+          ],
+
+          affiliate_url:"",
+          image_urls:[],
+          video_url:""
+        };
+
+        await addLog(
+          env,
+          "error",
+          "Manager research fallback used",
+          {
+            run_id:run.id,
+            opportunity_index:index,
+            error:researchError?.message ||
+              String(researchError)
+          }
+        );
+      }
+
+      const title=
+        researched.title ||
+        opportunity.title ||
+        "";
+
+      const duplicate=
+        await isManagerDuplicate(
+          env,
+          title
+        );
+
+      if(duplicate) {
+        state.rejected.push({
+          title,
+          reason:"Possible duplicate"
+        });
+
+        state.current_index=index+1;
+
+      } else {
+        const draft=
+          await createManagerDraft(
+            env,
+            researched,
+            run.id
+          );
+
+        state.drafts.push(draft);
+
+        state.current_index=index+1;
+      }
+
+      if(state.current_index>=opportunities.length) {
+        await finishManagerRun(
+          env,
+          run.id,
+          "completed",
+          "Manager cycle completed.",
+          state
+        );
+
+        const finished=await getManagerRun(
+          env,
+          run.id
+        );
+
+        return json({
+          ok:true,
+          done:true,
+          run:finished
+        });
+      }
+
+      await updateManagerRun(
+        env,
+        run.id,
+        "researching",
+        `Researching opportunity ${state.current_index+1} of ${opportunities.length}...`,
+        state
+      );
+
+      const updated=await getManagerRun(
+        env,
+        run.id
+      );
+
+      return json({
+        ok:true,
+        done:false,
+        run:updated
+      });
+
+    } catch(error) {
+      console.error(
+        "Manager step failed:",
+        error
+      );
+
+      await finishManagerRun(
+        env,
+        run.id,
+        "failed",
+        error?.message||String(error),
+        state
+      );
+
+      await addLog(
+        env,
+        "error",
+        "Manager step failed",
+        {
+          run_id:run.id,
+          opportunity_index:index,
+          error:error?.message||String(error)
+        }
+      );
+
+      const failed=await getManagerRun(
+        env,
+        run.id
+      );
+
+      return json({
+        ok:true,
+        done:true,
+        run:failed
+      });
+    }
+  }
+
+  /*
+    Unexpected stage.
+  */
+  await finishManagerRun(
+    env,
+    run.id,
+    "failed",
+    `Unknown Manager stage: ${run.stage}`,
+    state
+  );
+
+  const failed=await getManagerRun(
+    env,
+    run.id
+  );
+
+  return json({
+    ok:true,
+    done:true,
+    run:failed
+  });
+}
+
+async function getManagerRun(env,runId) {
+  return await env.DB.prepare(`
+    SELECT *
+    FROM manager_runs
+    WHERE id=?
+    LIMIT 1
+  `).bind(
+    runId
+  ).first();
+}
+
+async function updateManagerRun(
+  env,
+  runId,
+  stage,
+  message,
+  resultState=null
+) {
+  const now=nowISO();
+
+  let resultJson;
+
+  if(resultState!==null) {
+    resultJson=JSON.stringify(
+      resultState
+    );
+  } else {
+    const existing=
+      await getManagerRun(
+        env,
+        runId
+      );
+
+    resultJson=
+      existing?.result_json ||
+      "{}";
+  }
+
+  await env.DB.prepare(`
+    UPDATE manager_runs
+    SET
+      stage=?,
+      message=?,
+      result_json=?,
+      updated_at=?
+    WHERE id=?
+      AND status='running'
+  `).bind(
+    stage,
+    message,
+    resultJson,
+    now,
+    runId
+  ).run();
+}
+
+async function finishManagerRun(
+  env,
+  runId,
+  status,
+  message,
+  resultState={}
+) {
+  const now=nowISO();
+
+  await env.DB.prepare(`
+    UPDATE manager_runs
+    SET
+      status=?,
+      stage=?,
+      message=?,
+      result_json=?,
+      updated_at=?,
+      finished_at=?
+    WHERE id=?
+  `).bind(
+    status,
+    status==="completed"
+      ? "completed"
+      : "failed",
+    message,
+    JSON.stringify(
+      resultState||{}
+    ),
+    now,
+    now,
+    runId
+  ).run();
+}
+
+async function managerStatus(env) {
+  /*
+    Automatically clean stale runs here too.
+    This protects the dashboard even if the user
+    does not press Run Manager again.
+  */
+
+  await env.DB.prepare(`
+    UPDATE manager_runs
+    SET
+      status='failed',
+      stage='failed',
+      message='Automatically stopped: stale Manager run.',
+      updated_at=?,
+      finished_at=?
+    WHERE status='running'
+      AND updated_at < datetime('now','-15 minutes')
+  `).bind(
+    nowISO(),
+    nowISO()
+  ).run();
+
+  const run=await env.DB.prepare(`
+    SELECT *
+    FROM manager_runs
+    ORDER BY started_at DESC
+    LIMIT 1
+  `).first();
+
+  let parsed={};
+
+  try {
+    parsed=JSON.parse(
+      run?.result_json||"{}"
+    );
+  } catch {
+    parsed={};
+  }
+
+  return json({
+    ok:true,
+    run:run||null,
+    state:parsed
+  });
+}
+
+function parseJSONFromAI(text) {
+  if(!text)
+    return {};
+
+  if(typeof text==="object")
+    return text;
+
+  let value=String(text).trim();
+
+  /*
+    Remove Markdown JSON fences.
+  */
+  value=value
+    .replace(/^```json\s*/i,"")
+    .replace(/^```\s*/i,"")
+    .replace(/\s*```$/i,"")
+    .trim();
+
+  /*
+    First attempt:
+    complete response is JSON.
+  */
+  try {
+    return JSON.parse(value);
+  } catch {}
+
+  /*
+    Second attempt:
+    find the first JSON object.
+  */
+  const first=value.indexOf("{");
+  const last=value.lastIndexOf("}");
+
+  if(first!==-1 && last>first) {
+    try {
+      return JSON.parse(
+        value.slice(first,last+1)
+      );
+    } catch {}
+  }
+
+  /*
+    Third attempt:
+    find JSON array.
+  */
+  const firstArray=value.indexOf("[");
+  const lastArray=value.lastIndexOf("]");
+
+  if(firstArray!==-1 && lastArray>firstArray) {
+    try {
+      return JSON.parse(
+        value.slice(
+          firstArray,
+          lastArray+1
+        )
+      );
+    } catch {}
+  }
+
+  return {};
+}
+
+function normalizeCategory(value) {
+  const clean=safeString(
+    value,
+    "Other"
+  );
+
+  const found=CATEGORIES.find(
+    category =>
+      category.toLowerCase()===
+      clean.toLowerCase()
+  );
+
+  return found||"Other";
+}
+
+async function runScheduledManager(env) {
+  try {
+    if(!env.AI || !env.DB)
+      return;
+
+    const active=await env.DB.prepare(`
+      SELECT id
+      FROM manager_runs
+      WHERE status='running'
+      LIMIT 1
+    `).first();
+
+    if(active)
+      return;
+
+    const runId=createRunId();
+    const now=nowISO();
+
+    const focus=
+      "Find useful, practical product opportunities for Shopper's Suggestions.";
+
+    const state={
+      focus,
+      opportunities:[],
+      current_index:0,
+      drafts:[],
+      rejected:[],
+      discovery_done:false,
+      scheduled:true
+    };
+
+    await env.DB.prepare(`
+      INSERT INTO manager_runs
+      (
+        id,
+        status,
+        stage,
+        message,
+        result_json,
+        started_at,
+        updated_at
+      )
+      VALUES(
+        ?,
+        'running',
+        'discovering',
+        'Scheduled Manager run started.',
+        ?,
+        ?,
+        ?
+      )
+    `).bind(
+      runId,
+      JSON.stringify(state),
+      now,
+      now
+    ).run();
+
+    await addLog(
+      env,
+      "info",
+      "Scheduled Manager run created",
+      {
+        run_id:runId
+      }
+    );
+
+    /*
+      Cloudflare Cron has limited execution time,
+      so process only the first bounded step here.
+
+      The normal Manager UI continues subsequent
+      steps through /api/manager/step.
+    */
+
+    await managerStep(
+      new Request(
+        "https://internal/api/manager/step",
+        {
+          method:"POST",
+          body:JSON.stringify({
+            run_id:runId
+          }),
+          headers:{
+            "content-type":"application/json"
+          }
+        }
+      ),
+      env
+    );
+
+  } catch(error) {
+    console.error(
+      "Scheduled Manager failed:",
+      error
+    );
+
+    await addLog(
+      env,
+      "error",
+      "Scheduled Manager failed",
+      {
+        error:error?.message||String(error)
+      }
+    );
+  }
+}
+
+async function runLegacyManagerStep(env,runId) {
+  /*
+    Kept as a compatibility helper.
+    New requests should use managerStep().
+  */
+
+  return managerStep(
+    new Request(
+      "https://internal/api/manager/step",
+      {
+        method:"POST",
+        body:JSON.stringify({
+          run_id:runId
+        }),
+        headers:{
+          "content-type":"application/json"
+        }
+      }
+    ),
+    env
+  );
+}
