@@ -1394,30 +1394,73 @@ function createRunId() {
   );
 }
 
-async function runManager(
-  request,
-  env
-) {
-  if (!env.AI) {
-    return json(
-      {
-        ok: false,
-        error:
-          "Workers AI binding AI is missing."
-      },
-      500
-    );
-  }
+async function runManager(request,env,ctx) {
+  if(!env.AI)
+    return json({
+      ok:false,
+      error:"Workers AI binding AI is missing."
+    },500);
 
-  const body = await readJson(request);
+  // Stop stale runs so old crashed runs cannot block the Manager.
+  await env.DB.prepare(`
+    UPDATE manager_runs
+    SET
+      status='failed',
+      stage='failed',
+      message='Automatically stopped: stale Manager run.',
+      updated_at=?,
+      finished_at=?
+    WHERE status='running'
+    AND updated_at < datetime('now','-15 minutes')
+  `).bind(nowISO(),nowISO()).run();
 
-  const focus = safeString(
-    body.focus ||
-    body.query ||
-    body.topic,
-    "Find useful, practical product opportunities for Shopper's Suggestions."
+  const active=await env.DB.prepare(`
+    SELECT id
+    FROM manager_runs
+    WHERE status='running'
+    ORDER BY started_at DESC
+    LIMIT 1
+  `).first();
+
+  if(active)
+    return json({
+      ok:false,
+      error:"A Manager run is already active.",
+      run_id:active.id
+    },409);
+
+  const body=await readJson(request);
+
+  const focus=safeString(
+    body.focus||body.query||body.topic,
+    "Find useful product opportunities for Shopper's Suggestions."
   );
 
+  const runId=createRunId();
+  const now=nowISO();
+
+  await env.DB.prepare(`
+    INSERT INTO manager_runs
+    (id,status,stage,message,result_json,started_at,updated_at)
+    VALUES(?,'running','starting','Manager started','{}',?,?)
+  `).bind(runId,now,now).run();
+
+  await addLog(env,"info","Manager run started",{
+    run_id:runId,
+    focus
+  });
+
+  ctx.waitUntil(
+    executeManagerRun(env,runId,focus)
+  );
+
+  return json({
+    ok:true,
+    started:true,
+    run_id:runId,
+    message:"Manager run started in the background."
+  });
+}
   /*
     Prevent multiple active Manager runs.
   */
